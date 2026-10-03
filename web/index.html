@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>単語ローグライク 完全版</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #1a202c; color: #e2e8f0; touch-action: manipulation; }
+    .hp-bar, .timer-bar, .progress-bar { transition: width 0.3s ease-out; }
+    .timer-linear { transition: width 0.1s linear; }
+    .shake { animation: shake 0.5s; }
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+    /* モーダル背景 */
+    .modal-overlay { background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(2px); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-2 sm:p-4">
+
+  <!-- ================= ホーム画面 ================= -->
+  <div id="home-screen" class="w-full max-w-md bg-gray-800 rounded-lg shadow-lg p-6 mt-2">
+    <h1 class="text-2xl font-bold text-center mb-2 text-yellow-400">Word Dungeon</h1>
+    
+    <!-- 所持コイン表示 -->
+    <div class="text-center text-yellow-300 font-bold mb-4 text-lg">
+      🪙 所持コイン: <span id="total-coins-display">0</span>
+    </div>
+    
+    <!-- 円グラフ -->
+    <div class="w-48 h-48 mx-auto mb-6">
+      <canvas id="progressChart"></canvas>
+    </div>
+    
+    <div class="flex justify-center mb-6">
+      <button onclick="startBattle()" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-full text-xl shadow-[0_4px_0_rgb(153,27,27)] active:shadow-none active:translate-y-1 transition-all w-full">
+        ダンジョンへ出発
+      </button>
+    </div>
+
+    <!-- データ読み込み UI (ユーザー側をコメントアウト) -->
+    <!--
+    <div class="mb-4 bg-gray-900 p-3 rounded text-sm">
+      <p class="text-gray-400 mb-2">CSVデータ (en,ja) を読み込む:</p>
+      <input type="file" id="csv-file" accept=".csv" class="text-xs text-gray-300 w-full" />
+    </div>
+    -->
+
+    <!-- 単語リスト -->
+    <h2 class="text-lg font-bold border-b border-gray-600 pb-2 mb-2">単語リスト (ダメージ値)</h2>
+    <div class="max-h-48 overflow-y-auto text-sm">
+      <table class="w-full text-left">
+        <thead class="text-gray-400"><tr><th>単語</th><th>意味</th><th>ダメージ</th></tr></thead>
+        <tbody id="word-list-body"></tbody>
+      </table>
+    </div>
+    
+    <button onclick="resetData()" class="mt-6 text-xs text-gray-500 underline w-full text-center">学習データをリセット</button>
+  </div>
+
+  <!-- ================= バトル画面 ================= -->
+  <div id="battle-screen" class="w-full max-w-md bg-gray-900 rounded-lg shadow-lg p-4 mt-2 hidden relative flex flex-col gap-4">
+    
+    <!-- 階層進捗バー (一番上) -->
+    <div class="w-full">
+      <div class="flex justify-between text-xs font-bold text-gray-400 mb-1">
+        <span>Dungeon Progress</span>
+        <span id="floor-text">Floor 1 / 20</span>
+      </div>
+      <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+        <div id="floor-bar" class="bg-blue-500 h-full progress-bar" style="width: 5%"></div>
+      </div>
+    </div>
+
+    <!-- 敵エリア -->
+    <div id="enemy-area" class="bg-gray-800 rounded-lg p-4 text-center border-2 border-gray-700 relative">
+      <div id="enemy-name" class="text-yellow-400 font-bold mb-2 text-sm">ゴブリン</div>
+      <div id="enemy-image" class="text-6xl mb-4 transition-transform transform">👾</div>
+      
+      <!-- 敵HP -->
+      <div class="flex justify-between text-xs font-bold mb-1 text-red-300">
+        <span>Enemy HP</span>
+        <span id="enemy-hp-text">100 / 100</span>
+      </div>
+      <div class="w-full bg-gray-700 h-3 rounded-full overflow-hidden">
+        <div id="enemy-hp-bar" class="bg-red-500 h-full hp-bar" style="width: 100%"></div>
+      </div>
+      <!-- ダメージポップアップ -->
+      <div id="damage-popup" class="absolute top-10 left-1/2 -translate-x-1/2 text-red-400 font-bold text-xl opacity-0 transition-opacity pointer-events-none drop-shadow-md">Hit!</div>
+    </div>
+
+    <!-- プレイヤーHP (敵の枠の下、出題枠の上) -->
+    <div>
+      <div class="flex justify-between text-xs font-bold mb-1 text-green-300">
+        <span>あなた (HP)</span>
+        <span id="player-hp-text">100 / 100</span>
+      </div>
+      <div class="w-full bg-gray-700 h-4 rounded-full overflow-hidden border border-gray-600 shadow-inner">
+        <div id="player-hp-bar" class="bg-green-500 h-full hp-bar" style="width: 100%"></div>
+      </div>
+    </div>
+
+    <!-- 問題エリア -->
+    <div class="bg-gray-800 rounded-lg p-4 text-center shadow-md relative overflow-hidden">
+      <!-- 制限時間バー -->
+      <div class="absolute top-0 left-0 w-full bg-gray-700 h-1">
+        <div id="timer-bar" class="bg-yellow-400 h-full timer-linear" style="width: 100%"></div>
+      </div>
+      <div class="text-xs text-gray-400 mb-1 mt-2" id="question-type">英 ➔ 日</div>
+      <div class="text-2xl font-bold py-2" id="question-word">Question</div>
+    </div>
+
+    <!-- 4択ボタン -->
+    <div id="choices-container" class="grid grid-cols-1 gap-2">
+      <!-- JSで生成 -->
+    </div>
+
+    <button onclick="surrender()" class="mt-2 text-xs text-gray-500 underline w-full text-center">逃げる (リタイア)</button>
+  </div>
+
+  <!-- ================= リザルトモーダル ================= -->
+  <div id="result-modal" class="fixed inset-0 modal-overlay flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-gray-800 border-2 border-gray-600 rounded-xl p-6 max-w-sm w-full shadow-2xl text-center">
+      <h2 id="result-title" class="text-2xl font-bold mb-4 text-yellow-400">Game Over</h2>
+      
+      <div class="flex justify-center gap-4 mb-4 text-lg font-bold">
+        <div class="text-green-400">⭕ 正解: <span id="result-correct">0</span></div>
+        <div class="text-red-400">❌ ミス: <span id="result-incorrect">0</span></div>
+      </div>
+      
+      <div class="text-yellow-300 font-bold mb-4">
+        🪙 獲得コイン: <span id="result-coin">0</span>
+      </div>
+
+      <div class="text-left bg-gray-900 rounded p-3 mb-6 max-h-40 overflow-y-auto border border-gray-700">
+        <h3 class="text-sm font-bold text-gray-400 border-b border-gray-700 mb-2 pb-1">復習すべき単語</h3>
+        <ul id="result-mistakes" class="text-sm text-gray-300 space-y-1"></ul>
+      </div>
+
+      <button onclick="closeResult()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 w-full rounded-full shadow-[0_4px_0_rgb(30,58,138)] active:shadow-none active:translate-y-1 transition-all">
+        ホームへ戻る
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // --- 初期データ (ダミー) ---
+    const defaultWords = [
+      { id: 1, en: "assume", ja: "〜と思い込む" }, { id: 2, en: "investigate", ja: "〜を調査する" },
+      { id: 3, en: "contribute", ja: "貢献する" }, { id: 4, en: "recognize", ja: "〜を識別する" },
+      { id: 5, en: "indicate", ja: "〜を示す" }, { id: 6, en: "reveal", ja: "〜を明らかにする" },
+      { id: 7, en: "establish", ja: "〜を設立する" }, { id: 8, en: "represent", ja: "〜を代表する" },
+      { id: 9, en: "preserve", ja: "〜を保護する" }, { id: 10, en: "determine", ja: "〜を決定する" },
+      { id: 11, en: "identify", ja: "〜を特定する" }, { id: 12, en: "encourage", ja: "〜を励ます" },
+    ].map(w => ({ ...w, correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null }));
+
+    // --- 敵のバリエーション ---
+    const enemiesData = [
+      { name: 'スライム', icon: '💧', hp: 50 },
+      { name: 'ゴブリン', icon: '👾', hp: 80 },
+      { name: 'スケルトン', icon: '💀', hp: 120 },
+      { name: 'オーク', icon: '👹', hp: 160 },
+      { name: 'ゴーレム', icon: '🪨', hp: 220 },
+      { name: 'デーモン', icon: '😈', hp: 300 }
+    ];
+    const bossData = { name: '魔王 (ラスボス)', icon: '👿', hp: 1000 };
+
+    let words = [];
+    let chartInstance = null;
+    let totalCoins = 0; // 所持コイン
+
+    // --- セッション状態 ---
+    let playerHp = 100, playerMaxHp = 100;
+    let enemyHp = 100, enemyMaxHp = 100;
+    let currentFloor = 1;
+    const maxFloor = 20; // 21階がボス
+    let currentWord = null;
+    let currentChoices = [];
+    let isEnToJa = true;
+    let isWaiting = false; // 二重クリック防止
+
+    // セッション成績
+    let sessionCorrect = 0;
+    let sessionIncorrect = 0;
+    let sessionMistakes = new Map(); // id -> word
+
+    // タイマー
+    let timerInterval;
+    let timeLeft;
+    const TIME_LIMIT = 4000; // 4秒
+
+    // --- 初期化 ---
+    function init() {
+      // 単語データの読み込み
+      const savedData = localStorage.getItem('wordDungeonData');
+      if (savedData) {
+        words = JSON.parse(savedData);
+      } else {
+        words = JSON.parse(JSON.stringify(defaultWords));
+      }
+      
+      // コインデータの読み込み
+      const savedCoins = localStorage.getItem('wordDungeonCoins');
+      if (savedCoins) {
+        totalCoins = parseInt(savedCoins, 10);
+      }
+
+      // 自動で同じディレクトリの words.csv を探してマージ (サイレント)
+      fetch('words.csv')
+        .then(res => res.text())
+        .then(text => { 
+          if(text.includes(',')) mergeCSV(text); 
+        })
+        .catch(() => console.log('No local words.csv found.'));
+
+      renderHome();
+    }
+
+    // --- 音声読み上げ ---
+    function speakWord(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'en-US';
+        msg.rate = 1.0;
+        window.speechSynthesis.speak(msg);
+      }
+    }
+
+    // --- CSV読み込み・学習履歴の保持マージ ---
+    /* ユーザー側UIはコメントアウトしましたが、処理自体は残しています
+    document.getElementById('csv-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => { mergeCSV(event.target.result, true); };
+      reader.readAsText(file);
+    });
+    */
+
+    function mergeCSV(text) {
+      const lines = text.split('\n');
+      const newWords = [];
+      let idCounter = words.length > 0 ? Math.max(...words.map(w => w.id)) + 1 : 1;
+      
+      lines.forEach(line => {
+        const [en, ja] = line.split(',').map(s => s?.trim());
+        if (en && ja) {
+          // 既存の学習データにあるかチェック
+          const existing = words.find(w => w.en === en);
+          if (!existing) {
+            // 完全新規なら追加
+            newWords.push({ id: idCounter++, en, ja, correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null });
+          } else {
+            // 既存にあれば、日本語訳のみ最新にする（学習記録は上書きせず保持）
+            existing.ja = ja;
+          }
+        }
+      });
+
+      if (newWords.length > 0) {
+        words = words.concat(newWords);
+      }
+      
+      saveData();
+      renderHome();
+    }
+
+    // --- 計算ロジック ---
+    function calcDamage(word) {
+      let dmg = 10;
+      if (word.lastSeenTime === null) dmg += 30; // 未出題
+      else if (word.lastResult === false) dmg += 25; // 直近ミス
+      else dmg += 5;  // 復習
+      dmg += Math.min(word.incorrectCount * 3, 15);
+      return dmg;
+    }
+
+    // --- 描画 ---
+    function renderHome() {
+      // コイン表示更新
+      document.getElementById('total-coins-display').innerText = totalCoins;
+
+      let unseen = 0, learning = 0, memorized = 0;
+      const listBody = document.getElementById('word-list-body');
+      listBody.innerHTML = '';
+
+      const sortedWords = [...words].sort((a, b) => calcDamage(b) - calcDamage(a));
+
+      sortedWords.forEach(w => {
+        if (w.lastSeenTime === null) unseen++;
+        else if (w.lastResult === true && w.correctCount > w.incorrectCount) memorized++;
+        else learning++;
+
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-700';
+        tr.innerHTML = `<td class="py-1">${w.en}</td><td>${w.ja}</td><td class="text-right text-red-400 font-bold">${calcDamage(w)}</td>`;
+        listBody.appendChild(tr);
+      });
+
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['覚えた', '学習中(ミスあり)', '未出題'],
+          datasets: [{ data: [memorized, learning, unseen], backgroundColor: ['#22c55e', '#eab308', '#64748b'], borderWidth: 0 }]
+        },
+        options: { plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1'} } }, cutout: '70%' }
+      });
+    }
+
+    // --- バトル進行 ---
+    function startBattle() {
+      if (words.length < 4) { alert('単語が4つ以上必要です！'); return; }
+      
+      currentFloor = 1;
+      playerHp = playerMaxHp = 100;
+      sessionCorrect = sessionIncorrect = 0;
+      sessionMistakes.clear();
+
+      document.getElementById('home-screen').classList.add('hidden');
+      document.getElementById('battle-screen').classList.remove('hidden');
+      
+      spawnEnemy();
+      updateUI();
+      nextQuestion();
+    }
+
+    function spawnEnemy() {
+      let enemyInfo;
+      if (currentFloor > maxFloor) {
+        enemyInfo = bossData;
+        document.getElementById('floor-text').innerText = `Floor BOSS`;
+        document.getElementById('floor-bar').style.width = `100%`;
+      } else {
+        const rank = Math.floor((currentFloor - 1) / (maxFloor / enemiesData.length));
+        enemyInfo = enemiesData[Math.min(rank, enemiesData.length - 1)];
+        document.getElementById('floor-text').innerText = `Floor ${currentFloor} / ${maxFloor}`;
+        document.getElementById('floor-bar').style.width = `${((currentFloor - 1) / maxFloor) * 100}%`;
+      }
+
+      enemyMaxHp = enemyInfo.hp + (currentFloor * 5);
+      enemyHp = enemyMaxHp;
+
+      document.getElementById('enemy-name').innerText = enemyInfo.name;
+      document.getElementById('enemy-image').innerText = enemyInfo.icon;
+    }
+
+    function nextQuestion() {
+      isWaiting = false;
+      document.getElementById('damage-popup').style.opacity = '0';
+      
+      const sortedWords = [...words].sort((a, b) => calcDamage(b) - calcDamage(a));
+      const poolSize = Math.min(5, sortedWords.length);
+      currentWord = sortedWords[Math.floor(Math.random() * poolSize)];
+      isEnToJa = Math.random() > 0.5;
+
+      document.getElementById('question-type').innerText = isEnToJa ? '英語 ➔ 日本語' : '日本語 ➔ 英語';
+      document.getElementById('question-word').innerText = isEnToJa ? currentWord.en : currentWord.ja;
+
+      if (isEnToJa) speakWord(currentWord.en);
+
+      currentChoices = [currentWord];
+      let pool = words.filter(w => w.id !== currentWord.id);
+      for(let i=0; i<3; i++) {
+        const r = Math.floor(Math.random() * pool.length);
+        currentChoices.push(pool[r]);
+        pool.splice(r, 1);
+      }
+      currentChoices.sort(() => Math.random() - 0.5);
+
+      const container = document.getElementById('choices-container');
+      container.innerHTML = '';
+      currentChoices.forEach((choice, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'choice-btn bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg border-b-4 border-gray-900 active:border-b-0 active:translate-y-1 transition-all shadow-md';
+        btn.innerText = isEnToJa ? choice.ja : choice.en;
+        btn.onclick = () => handleAnswer(idx);
+        container.appendChild(btn);
+      });
+
+      startTimer();
+    }
+
+    // --- タイマー処理 ---
+    function startTimer() {
+      clearInterval(timerInterval);
+      timeLeft = TIME_LIMIT;
+      const timerBar = document.getElementById('timer-bar');
+      timerBar.style.width = '100%';
+      timerBar.classList.remove('bg-red-500');
+      timerBar.classList.add('bg-yellow-400');
+      
+      const startTime = Date.now();
+      timerInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        timeLeft = TIME_LIMIT - elapsed;
+        
+        let percent = Math.max(0, (timeLeft / TIME_LIMIT) * 100);
+        timerBar.style.width = percent + '%';
+        
+        if (percent < 30) {
+          timerBar.classList.remove('bg-yellow-400');
+          timerBar.classList.add('bg-red-500');
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          handleAnswer(-1, true); // タイムアウト
+        }
+      }, 30);
+    }
+
+    // --- 回答・正誤判定 ---
+    function handleAnswer(selectedIndex, isTimeout = false) {
+      if (isWaiting) return;
+      isWaiting = true;
+      clearInterval(timerInterval);
+      document.getElementById('timer-bar').style.width = '0%';
+
+      const isCorrect = !isTimeout && currentChoices[selectedIndex].id === currentWord.id;
+      currentWord.lastSeenTime = Date.now();
+
+      if (!isEnToJa && !isTimeout) {
+        speakWord(currentChoices[selectedIndex].en);
+      }
+
+      const btns = document.querySelectorAll('.choice-btn');
+      btns.forEach((btn, idx) => {
+        btn.classList.remove('border-b-4', 'border-gray-900', 'bg-gray-700', 'hover:bg-gray-600');
+        if (currentChoices[idx].id === currentWord.id) {
+          btn.classList.add('border-4', 'border-green-500', 'bg-green-800');
+        } else if (idx === selectedIndex && !isCorrect) {
+          btn.classList.add('border-4', 'border-red-500', 'bg-red-800');
+        } else {
+          btn.classList.add('bg-gray-800', 'opacity-50');
+        }
+      });
+
+      if (isCorrect) {
+        currentWord.correctCount++;
+        currentWord.lastResult = true;
+        sessionCorrect++;
+        
+        const dmg = calcDamage(currentWord);
+        enemyHp -= dmg;
+        showPopup(`💥 ${dmg} DMG!`, '#f87171');
+        
+        const img = document.getElementById('enemy-image');
+        img.style.transform = 'scale(0.8) rotate(-10deg)';
+        setTimeout(() => img.style.transform = 'scale(1) rotate(0deg)', 150);
+
+      } else {
+        currentWord.incorrectCount++;
+        currentWord.lastResult = false;
+        sessionIncorrect++;
+        sessionMistakes.set(currentWord.id, currentWord);
+        
+        playerHp -= (currentFloor > maxFloor ? 30 : 20);
+        const msg = isTimeout ? '⌛ TIME OUT!' : '❌ MISS!';
+        showPopup(msg, '#60a5fa');
+        
+        document.getElementById('battle-screen').classList.add('shake');
+        setTimeout(() => document.getElementById('battle-screen').classList.remove('shake'), 500);
+      }
+
+      saveData();
+      updateUI();
+
+      setTimeout(() => {
+        if (playerHp <= 0) {
+          showResult('Game Over', false);
+        } else if (enemyHp <= 0) {
+          if (currentFloor > maxFloor) {
+             showResult('Dungeon Cleared!! 👑', true);
+          } else {
+             currentFloor++;
+             spawnEnemy();
+             updateUI();
+             nextQuestion();
+          }
+        } else {
+          nextQuestion();
+        }
+      }, 1000); 
+    }
+
+    function showPopup(text, color) {
+      const popup = document.getElementById('damage-popup');
+      popup.innerText = text;
+      popup.style.color = color;
+      popup.style.opacity = '1';
+      popup.style.transform = 'translate(-50%, -20px)';
+      setTimeout(() => {
+        popup.style.opacity = '0';
+        popup.style.transform = 'translate(-50%, 0)';
+      }, 800);
+    }
+
+    function updateUI() {
+      enemyHp = Math.max(0, enemyHp);
+      playerHp = Math.max(0, playerHp);
+
+      document.getElementById('player-hp-text').innerText = `${playerHp} / ${playerMaxHp}`;
+      document.getElementById('player-hp-bar').style.width = `${(playerHp / playerMaxHp) * 100}%`;
+      
+      document.getElementById('enemy-hp-text').innerText = `${enemyHp} / ${enemyMaxHp}`;
+      document.getElementById('enemy-hp-bar').style.width = `${(enemyHp / enemyMaxHp) * 100}%`;
+    }
+
+    function surrender() {
+      if(confirm('ダンジョンから逃げ出しますか？')) {
+        clearInterval(timerInterval);
+        showResult('Retreated...', false);
+      }
+    }
+
+    function showResult(title, isClear) {
+      document.getElementById('result-title').innerText = title;
+      document.getElementById('result-title').className = isClear ? 'text-2xl font-bold mb-4 text-yellow-300 drop-shadow-md' : 'text-2xl font-bold mb-4 text-gray-400';
+      
+      document.getElementById('result-correct').innerText = sessionCorrect;
+      document.getElementById('result-incorrect').innerText = sessionIncorrect;
+      
+      // コイン計算と加算・保存
+      const coin = (currentFloor - 1) * 10 + Math.floor(Math.random() * 20) + (isClear ? 100 : 0);
+      document.getElementById('result-coin').innerText = coin;
+      totalCoins += coin;
+      localStorage.setItem('wordDungeonCoins', totalCoins.toString());
+
+      const ul = document.getElementById('result-mistakes');
+      ul.innerHTML = '';
+      if (sessionMistakes.size === 0) {
+        ul.innerHTML = '<li class="text-green-400">ミスなし！完璧！</li>';
+      } else {
+        sessionMistakes.forEach(w => {
+          ul.innerHTML += `<li><span class="font-bold">${w.en}</span> - ${w.ja}</li>`;
+        });
+      }
+
+      document.getElementById('result-modal').classList.remove('hidden');
+    }
+
+    function closeResult() {
+      document.getElementById('result-modal').classList.add('hidden');
+      document.getElementById('battle-screen').classList.add('hidden');
+      document.getElementById('home-screen').classList.remove('hidden');
+      renderHome();
+    }
+
+    function saveData() { localStorage.setItem('wordDungeonData', JSON.stringify(words)); }
+    
+    function resetData() { 
+      if(confirm('学習データとコインをすべてリセットしますか？')) { 
+        localStorage.removeItem('wordDungeonData'); 
+        localStorage.removeItem('wordDungeonCoins');
+        totalCoins = 0;
+        init(); 
+      } 
+    }
+
+    init();
+  </script>
+</body>
+</html>
