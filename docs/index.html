@@ -1,630 +1,359 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>単語ローグライク 超進化版（最適化済）</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    /* スマホで見切れないように 100dvh を使用しスクロールを抑制 */
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #1a202c; color: #e2e8f0; touch-action: manipulation; }
-    .hp-bar, .timer-bar, .progress-bar { transition: width 0.3s ease-out; }
-    .timer-linear { transition: width 0.1s linear; }
-    .shake { animation: shake 0.5s; }
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25%, 75% { transform: translateX(-5px); }
-      50% { transform: translateX(5px); }
-    }
-    .modal-overlay { background-color: rgba(0, 0, 0, 0.75); backdrop-filter: blur(3px); }
-    
-    /* スクロールバーを少し目立たなくする */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #1f2937; }
-    ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>単語×ローグライク RPG (Phase 2)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 画面シェイク */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+        .shake-effect { animation: shake 0.4s ease-in-out; }
+
+        /* ダメージポップアップアニメーション */
+        @keyframes floatUp {
+            0% { opacity: 0; transform: translateY(10px) scale(0.8); }
+            50% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+            100% { opacity: 0; transform: translateY(-25px) scale(1); }
+        }
+        .damage-popup { animation: floatUp 0.8s forwards; }
+    </style>
 </head>
-<body class="h-[100dvh] flex flex-col items-center p-2 bg-gray-900 overflow-hidden">
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-3 select-none">
 
-  <!-- ================= ホーム画面 ================= -->
-  <div id="home-screen" class="w-full max-w-md bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col h-full overflow-y-auto">
-    <h1 class="text-2xl font-bold text-center mb-1 text-yellow-400">Word Dungeon</h1>
-    
-    <div class="text-center text-yellow-300 font-bold mb-3 text-sm">
-      🪙 所持コイン: <span id="total-coins-display">0</span>
+    <!-- ゲームコンテナ -->
+    <div id="game-container" class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl p-4 border border-slate-700 relative overflow-hidden">
+        
+        <!-- ヘッダー情報 -->
+        <div class="flex justify-between items-center mb-3 text-xs text-slate-400 font-bold px-1">
+            <span id="floor-info" class="text-indigo-400">STAGE 1 (WAVE 1/10)</span>
+            <span id="enemy-count">撃破数: 0</span>
+        </div>
+
+        <!-- ================= 対面型バトルエリア (ポケモン風) ================= -->
+        <div id="battle-stage" class="bg-slate-950/80 rounded-xl p-3 border border-slate-700 relative mb-3">
+            
+            <!-- 演出用テキスト・ダメージポップアップ (オーバーレイ) -->
+            <div id="cutin-overlay" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 hidden">
+                <div id="cutin-text" class="text-3xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">CRITICAL!!</div>
+                <div id="damage-text" class="text-2xl font-bold text-white mt-1"></div>
+            </div>
+
+            <!-- 1. 上段：敵エリア -->
+            <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
+                <!-- 敵ステータス -->
+                <div class="w-1/2 pr-2">
+                    <div id="enemy-name" class="font-bold text-sm text-rose-400">スライム</div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700 mt-1">
+                        <div id="enemy-hp-bar" class="bg-rose-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="enemy-hp-current">80</span>/<span id="enemy-hp-max">80</span></div>
+                </div>
+                <!-- 敵画像 (ドット絵差し替え可能コンテナ) -->
+                <div class="w-1/2 flex justify-center items-center">
+                    <div id="enemy-sprite" class="text-5xl transform hover:scale-105 transition-transform">👾</div>
+                </div>
+            </div>
+
+            <!-- 2. 下段：プレイヤーエリア -->
+            <div class="flex items-center justify-between pt-1">
+                <!-- プレイヤー画像 (ドット絵差し替え可能コンテナ) -->
+                <div class="w-1/2 flex justify-center items-center">
+                    <div id="player-sprite" class="text-5xl">⚔️</div>
+                </div>
+                <!-- プレイヤーステータス -->
+                <div class="w-1/2 pl-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-sm text-emerald-400">あなた</span>
+                        <!-- バリア表示 -->
+                        <span id="barrier-badge" class="text-[11px] bg-cyan-900 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500 font-mono">🛡️ 1</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700 mt-1">
+                        <div id="player-hp-bar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="player-hp-current">100</span>/<span id="player-hp-max">100</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= コントロール ＆ 出題エリア ================= -->
+        <div id="question-panel" class="space-y-3">
+            
+            <!-- 自信度スライダー -->
+            <div class="bg-slate-900/90 rounded-lg p-2 border border-slate-700 flex items-center justify-between text-xs">
+                <span class="text-slate-400 font-bold flex items-center gap-1">
+                    🔥 自信度倍率: <span id="confidence-val" class="text-yellow-400 font-mono font-bold text-sm">1.0x</span>
+                </span>
+                <input type="range" id="confidence-slider" min="10" max="20" value="10" step="1" 
+                       class="w-28 accent-yellow-400 cursor-pointer" oninput="updateConfidence(this.value)">
+            </div>
+
+            <!-- 問題表示エリア (ダメージ期待値タグ表示) -->
+            <div class="bg-slate-700/50 rounded-xl p-3 text-center border border-slate-600 relative">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[10px] text-indigo-300 font-semibold uppercase">Question</span>
+                    <!-- 価値連動ダメージ表示タグ -->
+                    <span id="word-damage-badge" class="bg-rose-900/80 text-rose-300 text-[11px] font-bold px-2 py-0.5 rounded-full border border-rose-500/50">
+                        想定威力: 35
+                    </span>
+                </div>
+                <div id="question-text" class="text-2xl font-black text-white py-1">abandon</div>
+                <div class="text-[11px] text-slate-400">正しい日本語を選択してください</div>
+            </div>
+
+            <!-- 4択選択肢 -->
+            <div id="choices-container" class="grid grid-cols-1 gap-2">
+                <!-- 動的生成 -->
+            </div>
+        </div>
+
+        <!-- 解説モーダル (不正解時に一時停止用) -->
+        <div id="explanation-modal" class="hidden absolute inset-0 bg-slate-950/90 z-30 p-6 flex flex-col justify-center items-center text-center">
+            <div class="text-rose-400 text-sm font-bold mb-1">❌ Incorrect / 解説</div>
+            <div id="exp-word" class="text-2xl font-bold text-white mb-1">abandon</div>
+            <div id="exp-meaning" class="text-lg text-emerald-400 font-semibold mb-4">見捨てる、放棄する</div>
+            <p class="text-xs text-slate-400 mb-6 leading-relaxed">この単語は復習が必要です。確実に覚えて次の攻撃力をアップさせましょう！</p>
+            <button onclick="resumeAfterExplanation()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl transition">次へ進む</button>
+        </div>
+
+        <!-- ゲームオーバー画面 -->
+        <div id="result-screen" class="hidden text-center py-8">
+            <h2 class="text-3xl font-black mb-2 text-rose-500">GAME OVER</h2>
+            <p class="text-slate-400 text-sm mb-6">ダンジョン攻略失敗……</p>
+            <button onclick="restartGame()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">もう一度挑戦</button>
+        </div>
+
     </div>
-    
-    <div class="w-36 h-36 mx-auto mb-3 shrink-0">
-      <canvas id="progressChart"></canvas>
-    </div>
 
-    <!-- ステージ選択 -->
-    <div class="mb-3 w-full shrink-0">
-      <label class="block text-gray-400 text-xs mb-1 font-bold">難易度 (ステージ)</label>
-      <select id="stage-select" class="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500 text-xs font-bold tracking-wider">
-        <option value="0">Stage 1 (入門 - 制限時間3倍 / HP激低 / 3階層)</option>
-        <option value="1">Stage 2 (初級 - 制限時間2.5倍 / HP低 / 7階層)</option>
-        <option value="2">Stage 3 (中級 - 制限時間2倍 / HP中 / 12階層)</option>
-        <option value="3">Stage 4 (上級 - 制限時間1.5倍 / HP高 / 16階層)</option>
-        <option value="4" selected>Stage 5 (地獄 - 標準時間 / 標準HP / 20階層)</option>
-      </select>
-    </div>
-    
-    <div class="flex justify-center mb-3 shrink-0">
-      <button onclick="startBattle()" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-[0_4px_0_rgb(153,27,27)] active:shadow-none active:translate-y-1 transition-all w-full">
-        ダンジョンへ出発
-      </button>
-    </div>
+    <script>
+        // --- 1. マスター＆単語データ ---
+        let words = [
+            { id: 1, en: "abandon", ja: "見捨てる、放棄する", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 2, en: "ability", ja: "能力、才能", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 3, en: "abolish", ja: "廃止する", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 4, en: "absent", ja: "不在の、欠席した", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 5, en: "absolute", ja: "絶対的な、完全な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 6, en: "absorb", ja: "吸収する、夢中にさせる", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 7, en: "abstract", ja: "抽象的な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
+            { id: 8, en: "absurd", ja: "ばかげた、不条理な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null }
+        ];
 
-    <h2 class="text-sm font-bold border-b border-gray-600 pb-1 mb-1 shrink-0">単語リスト (ダメージ値)</h2>
-    <div class="flex-1 overflow-y-auto text-xs min-h-[80px] border border-gray-700 rounded p-2 bg-gray-900">
-      <table class="w-full text-left">
-        <thead class="text-gray-400 sticky top-0 bg-gray-900 shadow"><tr><th>単語</th><th>意味</th><th>DMG</th></tr></thead>
-        <tbody id="word-list-body"></tbody>
-      </table>
-    </div>
-    
-    <button onclick="resetData()" class="mt-3 text-xs text-gray-500 hover:text-gray-300 underline w-full text-center shrink-0">学習データをリセット</button>
-  </div>
+        // --- 2. 状態管理 ---
+        let player = { hp: 100, maxHp: 100, barrier: 1, defeatedCount: 0 };
+        let currentEnemy = { name: "スライム", icon: "👾", hp: 80, maxHp: 80 };
+        let currentWord = null;
+        let confidenceMultiplier = 1.0;
+        let questionStartTime = 0;
+        let isProcessing = false; // 二重タップ防止
 
-  <!-- ================= バトル画面 ================= -->
-  <div id="battle-screen" class="w-full max-w-md bg-gray-900 rounded-lg shadow-lg p-2 hidden relative flex-col h-full gap-1.5">
-    
-    <!-- 階層進捗バー -->
-    <div class="w-full shrink-0">
-      <div class="flex justify-between text-lg font-black text-white mb-1 drop-shadow">
-        <span>DUNGEON</span>
-        <span id="floor-text" class="text-blue-300 tracking-wide text-xl">Floor 1 / 20</span>
-      </div>
-      <div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden border border-gray-700">
-        <div id="floor-bar" class="bg-blue-500 h-full progress-bar" style="width: 5%"></div>
-      </div>
-    </div>
-
-    <!-- 敵エリア -->
-    <div id="enemy-area" class="bg-gray-800 rounded-lg p-2 text-center border-2 border-gray-700 relative flex-1 flex flex-col justify-center min-h-[100px]">
-      <div id="enemy-name" class="text-yellow-400 font-bold mb-1 text-xs">ゴブリン</div>
-      <div id="enemy-image" class="text-4xl mb-1 transition-transform transform">👾</div>
-      
-      <div class="flex justify-between text-[11px] font-bold mb-1 text-red-300 w-full px-2">
-        <span>Enemy HP</span>
-        <span id="enemy-hp-text">100 / 100</span>
-      </div>
-      <div class="w-full bg-gray-700 h-2.5 rounded-full overflow-hidden px-1">
-        <div id="enemy-hp-bar" class="bg-red-500 h-full hp-bar" style="width: 100%"></div>
-      </div>
-      <div id="damage-popup" class="absolute top-1/3 left-1/2 -translate-x-1/2 text-red-400 font-black text-2xl opacity-0 transition-opacity pointer-events-none drop-shadow-lg z-10 w-full">Hit!</div>
-    </div>
-
-    <!-- プレイヤーHP -->
-    <div class="shrink-0">
-      <div class="flex justify-between text-xs font-bold mb-1 text-green-300">
-        <span>あなた <span id="buff-status" class="text-[10px] text-yellow-300 ml-1"></span></span>
-        <span id="player-hp-text">100 / 100</span>
-      </div>
-      <div class="w-full bg-gray-700 h-3 rounded-full overflow-hidden border border-gray-600 shadow-inner">
-        <div id="player-hp-bar" class="bg-green-500 h-full hp-bar" style="width: 100%"></div>
-      </div>
-    </div>
-
-    <!-- 問題エリア -->
-    <div class="bg-gray-800 rounded-lg p-2 text-center shadow-md relative overflow-hidden shrink-0 mt-1">
-      <div class="absolute top-0 left-0 w-full bg-gray-700 h-1">
-        <div id="timer-bar" class="bg-yellow-400 h-full timer-linear" style="width: 100%"></div>
-      </div>
-      <div class="text-[11px] text-gray-400 mb-0.5 mt-1" id="question-type">英 ➔ 日</div>
-      <div class="text-lg font-bold py-1 tracking-wider" id="question-word">Question</div>
-    </div>
-
-    <!-- 4択ボタン -->
-    <div id="choices-container" class="grid grid-cols-1 gap-1.5 shrink-0">
-      <!-- JSで生成 -->
-    </div>
-
-    <!-- 次へボタン (ミス時のみ表示) -->
-    <div id="next-btn-container" class="hidden shrink-0 mt-1">
-      <button onclick="nextBtnClicked()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg shadow-[0_4px_0_rgb(30,58,138)] active:shadow-none active:translate-y-1 transition-all animate-pulse text-sm">
-        正解を確認して 次へ 👉
-      </button>
-    </div>
-
-    <button onclick="surrender()" class="mt-1 pb-1 text-xs text-gray-500 hover:text-gray-300 underline w-full text-center shrink-0 cursor-pointer relative z-20">リタイア</button>
-  </div>
-
-  <!-- ================= スキル選択モーダル ================= -->
-  <div id="skill-modal" class="fixed inset-0 modal-overlay flex items-center justify-center hidden z-40 p-4">
-    <div class="bg-gray-800 border-2 border-yellow-500 rounded-xl p-5 max-w-sm w-full shadow-2xl text-center">
-      <h2 class="text-xl font-bold mb-1 text-yellow-400">✨ レベルアップ！</h2>
-      <p class="text-xs text-gray-300 mb-4">5問突破！取得するスキルを選んでください</p>
-      
-      <div id="skill-choices" class="flex flex-col gap-3">
-        <!-- JSで生成 -->
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= リザルトモーダル ================= -->
-  <div id="result-modal" class="fixed inset-0 modal-overlay flex items-center justify-center hidden z-50 p-4">
-    <div class="bg-gray-800 border-2 border-gray-600 rounded-xl p-5 max-w-sm w-full shadow-2xl text-center flex flex-col max-h-[90vh]">
-      <h2 id="result-title" class="text-2xl font-bold mb-3 text-yellow-400 shrink-0">Game Over</h2>
-      
-      <div class="flex justify-center gap-5 mb-3 text-lg font-bold shrink-0">
-        <div class="text-green-400">⭕ <span id="result-correct">0</span></div>
-        <div class="text-red-400">❌ <span id="result-incorrect">0</span></div>
-      </div>
-      
-      <div class="text-yellow-300 font-bold mb-4 shrink-0">
-        🪙 獲得コイン: <span id="result-coin">0</span>
-      </div>
-
-      <div class="text-left bg-gray-900 rounded p-3 mb-4 flex-1 overflow-y-auto border border-gray-700 min-h-[100px]">
-        <h3 class="text-xs font-bold text-gray-400 border-b border-gray-700 mb-2 pb-1 sticky top-0 bg-gray-900">復習すべき単語</h3>
-        <ul id="result-mistakes" class="text-sm text-gray-300 space-y-1.5"></ul>
-      </div>
-
-      <button onclick="closeResult()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 w-full rounded-full shrink-0 relative z-50 shadow-[0_4px_0_rgb(30,58,138)] active:shadow-none active:translate-y-1 transition-all">
-        ホームへ戻る
-      </button>
-    </div>
-  </div>
-
-  <script>
-    // --- 初期データ ---
-    const defaultWords = [
-      { id: 1, en: "assume", ja: "〜と思い込む" }, { id: 2, en: "investigate", ja: "〜を調査する" },
-      { id: 3, en: "contribute", ja: "貢献する" }, { id: 4, en: "recognize", ja: "〜を識別する" },
-      { id: 5, en: "indicate", ja: "〜を示す" }, { id: 6, en: "reveal", ja: "〜を明らかにする" },
-      { id: 7, en: "establish", ja: "〜を設立する" }, { id: 8, en: "represent", ja: "〜を代表する" },
-      { id: 9, en: "preserve", ja: "〜を保護する" }, { id: 10, en: "determine", ja: "〜を決定する" },
-      { id: 11, en: "identify", ja: "〜を特定する" }, { id: 12, en: "encourage", ja: "〜を励ます" },
-    ].map(w => ({ ...w, correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null }));
-
-    const enemiesData = [
-      { name: 'スライム', icon: '💧', hp: 50 }, { name: 'ゴブリン', icon: '👾', hp: 80 },
-      { name: 'スケルトン', icon: '💀', hp: 120 }, { name: 'オーク', icon: '👹', hp: 160 },
-      { name: 'ゴーレム', icon: '🪨', hp: 220 }, { name: 'デーモン', icon: '😈', hp: 300 }
-    ];
-    const bossData = { name: '魔王 (ラスボス)', icon: '👿', hp: 800 };
-
-    // --- ステージ(難易度)設定 ---
-    const stageConfigs = [
-      { level: 1, maxFloor: 3, timeMulti: 3.0, hpMulti: 0.2, coinMulti: 1 },
-      { level: 2, maxFloor: 7, timeMulti: 2.5, hpMulti: 0.4, coinMulti: 2 },
-      { level: 3, maxFloor: 12, timeMulti: 2.0, hpMulti: 0.6, coinMulti: 4 },
-      { level: 4, maxFloor: 16, timeMulti: 1.5, hpMulti: 0.8, coinMulti: 8 },
-      { level: 5, maxFloor: 20, timeMulti: 1.0, hpMulti: 1.0, coinMulti: 15 },
-    ];
-
-    // --- スキル定義 ---
-    const allSkills = [
-      { name: '🩹 ヒールポーション', desc: 'HPを50回復', action: () => { playerHp = Math.min(playerMaxHp, playerHp + 50); } },
-      { name: '⚔️ 力の薬', desc: '攻撃力 +20% アップ', action: () => { playerAtk += 0.2; } },
-      { name: '🛡️ 守りの盾', desc: '受けるダメージ 20% カット', action: () => { playerDamageCut = Math.min(0.8, playerDamageCut + 0.2); } },
-      { name: '⏳ 時の砂', desc: '制限時間を 2秒 延長', action: () => { timeBonus += 2000; } },
-      { name: '❤️ 命の器', desc: '最大HP +20 & 現在HP +20', action: () => { playerMaxHp += 20; playerHp += 20; } },
-    ];
-
-    let words = [];
-    let chartInstance = null;
-    let totalCoins = 0;
-
-    // --- セッション状態 ---
-    let currentStage = stageConfigs[4];
-    let playerHp = 100, playerMaxHp = 100;
-    let enemyHp = 100, enemyMaxHp = 100;
-    let currentFloor = 1;
-    let currentWord = null, currentChoices = [];
-    let isEnToJa = true, isWaiting = false;
-
-    // バフ・進行状態
-    let playerAtk = 1.0;
-    let playerDamageCut = 0.0;
-    let timeBonus = 0;
-    let questionsAnsweredCount = 0;
-
-    let sessionCorrect = 0, sessionIncorrect = 0;
-    let sessionMistakes = new Map();
-    let timerInterval, timeLeft;
-    const BASE_TIME_LIMIT = 4000;
-
-    // --- 初期化 ---
-    function init() {
-      const savedData = localStorage.getItem('wordDungeonData');
-      words = savedData ? JSON.parse(savedData) : JSON.parse(JSON.stringify(defaultWords));
-      const savedCoins = localStorage.getItem('wordDungeonCoins');
-      if (savedCoins) totalCoins = parseInt(savedCoins, 10);
-
-      renderHome();
-
-      fetch('words.csv')
-        .then(res => res.text())
-        .then(text => { 
-          if(text.includes(',')) {
-            mergeCSV(text); 
-            renderHome(); 
-          }
-        })
-        .catch(() => {});
-    }
-
-    function speakWord(text) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = 'en-US';
-        msg.rate = 1.0;
-        window.speechSynthesis.speak(msg);
-      }
-    }
-
-    function mergeCSV(text) {
-      const lines = text.split('\n');
-      const newWords = [];
-      let idCounter = words.length > 0 ? Math.max(...words.map(w => w.id)) + 1 : 1;
-      lines.forEach(line => {
-        const [en, ja] = line.split(',').map(s => s?.trim());
-        if (en && ja) {
-          const existing = words.find(w => w.en === en);
-          if (!existing) newWords.push({ id: idCounter++, en, ja, correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null });
-          else existing.ja = ja;
+        // --- 3. ダメージ計算ロジック（価値連動） ---
+        function calcWordBaseDamage(word) {
+            let dmg = 15;
+            if (word.lastSeenTime === null) dmg += 25;       // 初見 (+25)
+            else if (word.lastResult === false) dmg += 20;   // 直近ミス (+20)
+            else dmg += 5;                                  // 復習 (+5)
+            dmg += Math.min(word.incorrectCount * 2, 10);
+            return dmg;
         }
-      });
-      if (newWords.length > 0) words = words.concat(newWords);
-      saveData();
-    }
 
-    function calcDamage(word) {
-      let dmg = 10;
-      if (word.lastSeenTime === null) dmg += 30;
-      else if (word.lastResult === false) dmg += 25;
-      else dmg += 5;
-      dmg += Math.min(word.incorrectCount * 3, 15);
-      return dmg;
-    }
-
-    function renderHome() {
-      document.getElementById('total-coins-display').innerText = totalCoins;
-      let unseen = 0, learning = 0, memorized = 0;
-      const listBody = document.getElementById('word-list-body');
-      
-      const sortedWords = [...words].sort((a, b) => calcDamage(b) - calcDamage(a));
-
-      // 【修正箇所】ここで文字列として一気に作成することで、DOMへの負荷を極限まで減らします。
-      let htmlString = "";
-      sortedWords.forEach(w => {
-        if (w.lastSeenTime === null) unseen++;
-        else if (w.lastResult === true && w.correctCount > w.incorrectCount) memorized++;
-        else learning++;
-        htmlString += `<tr class="border-b border-gray-700"><td class="py-1">${w.en}</td><td>${w.ja}</td><td class="text-right text-red-400 font-bold">${calcDamage(w)}</td></tr>`;
-      });
-      listBody.innerHTML = htmlString; // 最後に1回だけ書き込み
-
-      const ctx = document.getElementById('progressChart').getContext('2d');
-      if (chartInstance) chartInstance.destroy();
-      chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['覚えた', '学習中', '未出題'],
-          datasets: [{ data: [memorized, learning, unseen], backgroundColor: ['#22c55e', '#eab308', '#64748b'], borderWidth: 0 }]
-        },
-        options: { plugins: { legend: { display: false } }, cutout: '70%', maintainAspectRatio: false }
-      });
-    }
-
-    // --- バトル進行 ---
-    function startBattle() {
-      if (words.length < 4) { alert('単語が4つ以上必要です！'); return; }
-      
-      const stageSelect = document.getElementById('stage-select');
-      currentStage = stageConfigs[stageSelect.value];
-
-      currentFloor = 1;
-      playerHp = playerMaxHp = 100;
-      playerAtk = 1.0; playerDamageCut = 0.0; timeBonus = 0; questionsAnsweredCount = 0;
-      sessionCorrect = sessionIncorrect = 0;
-      sessionMistakes.clear();
-
-      const homeScreen = document.getElementById('home-screen');
-      const battleScreen = document.getElementById('battle-screen');
-      
-      homeScreen.classList.add('hidden');
-      homeScreen.classList.remove('flex');
-      
-      battleScreen.classList.remove('hidden');
-      battleScreen.classList.add('flex');
-      
-      spawnEnemy();
-      updateUI();
-      nextQuestion();
-    }
-
-    function spawnEnemy() {
-      let enemyInfo;
-      const maxFl = currentStage.maxFloor;
-      if (currentFloor > maxFl) {
-        enemyInfo = bossData;
-        document.getElementById('floor-text').innerText = `Floor BOSS`;
-        document.getElementById('floor-bar').style.width = `100%`;
-      } else {
-        const rank = Math.floor((currentFloor - 1) / (maxFl / enemiesData.length));
-        enemyInfo = enemiesData[Math.min(rank, enemiesData.length - 1)];
-        document.getElementById('floor-text').innerText = `Floor ${currentFloor} / ${maxFl}`;
-        document.getElementById('floor-bar').style.width = `${((currentFloor - 1) / maxFl) * 100}%`;
-      }
-
-      let calcHp = (enemyInfo.hp + (currentFloor * 5)) * currentStage.hpMulti;
-      enemyMaxHp = Math.floor(calcHp);
-      enemyHp = enemyMaxHp;
-
-      document.getElementById('enemy-name').innerText = enemyInfo.name;
-      document.getElementById('enemy-image').innerText = enemyInfo.icon;
-    }
-
-    function updateUI() {
-      enemyHp = Math.max(0, enemyHp);
-      playerHp = Math.max(0, playerHp);
-
-      document.getElementById('player-hp-text').innerText = `${playerHp} / ${playerMaxHp}`;
-      document.getElementById('player-hp-bar').style.width = `${(playerHp / playerMaxHp) * 100}%`;
-      document.getElementById('enemy-hp-text').innerText = `${enemyHp} / ${enemyMaxHp}`;
-      document.getElementById('enemy-hp-bar').style.width = `${(enemyHp / enemyMaxHp) * 100}%`;
-
-      let buffText = '';
-      if(playerAtk > 1.0) buffText += `⚔️x${playerAtk.toFixed(1)} `;
-      if(playerDamageCut > 0) buffText += `🛡️-${Math.round(playerDamageCut*100)}% `;
-      if(timeBonus > 0) buffText += `⏳+${timeBonus/1000}s`;
-      document.getElementById('buff-status').innerText = buffText;
-    }
-
-    function nextQuestion() {
-      isWaiting = false;
-      document.getElementById('damage-popup').style.opacity = '0';
-      document.getElementById('next-btn-container').classList.add('hidden');
-      
-      const sortedWords = [...words].sort((a, b) => calcDamage(b) - calcDamage(a));
-      const poolSize = Math.min(5, sortedWords.length);
-      currentWord = sortedWords[Math.floor(Math.random() * poolSize)];
-      isEnToJa = Math.random() > 0.5;
-
-      document.getElementById('question-type').innerText = isEnToJa ? '英語 ➔ 日本語' : '日本語 ➔ 英語';
-      document.getElementById('question-word').innerText = isEnToJa ? currentWord.en : currentWord.ja;
-      if (isEnToJa) speakWord(currentWord.en);
-
-      currentChoices = [currentWord];
-      let pool = words.filter(w => w.id !== currentWord.id);
-      for(let i=0; i<3; i++) {
-        const r = Math.floor(Math.random() * pool.length);
-        currentChoices.push(pool[r]);
-        pool.splice(r, 1);
-      }
-      currentChoices.sort(() => Math.random() - 0.5);
-
-      const container = document.getElementById('choices-container');
-      container.innerHTML = '';
-      currentChoices.forEach((choice, idx) => {
-        const btn = document.createElement('button');
-        btn.className = 'choice-btn bg-gray-700 hover:bg-gray-600 text-white font-bold py-2.5 px-3 rounded-lg border-b-4 border-gray-900 active:border-b-0 active:translate-y-1 transition-all shadow-sm text-[13px] sm:text-sm relative z-20 leading-tight';
-        btn.innerText = isEnToJa ? choice.ja : choice.en;
-        btn.onclick = () => handleAnswer(idx);
-        container.appendChild(btn);
-      });
-
-      startTimer();
-    }
-
-    function startTimer() {
-      clearInterval(timerInterval);
-      const actualTimeLimit = (BASE_TIME_LIMIT * currentStage.timeMulti) + timeBonus;
-      timeLeft = actualTimeLimit;
-      const timerBar = document.getElementById('timer-bar');
-      timerBar.style.width = '100%';
-      timerBar.className = 'bg-yellow-400 h-full timer-linear';
-      
-      const startTime = Date.now();
-      timerInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        timeLeft = actualTimeLimit - elapsed;
-        let percent = Math.max(0, (timeLeft / actualTimeLimit) * 100);
-        timerBar.style.width = percent + '%';
-        if (percent < 30) timerBar.className = 'bg-red-500 h-full timer-linear';
-
-        if (timeLeft <= 0) {
-          clearInterval(timerInterval);
-          handleAnswer(-1, true); 
+        // --- 4. ゲーム初期化 ---
+        function initGame() {
+            player.hp = 100;
+            player.barrier = 1;
+            player.defeatedCount = 0;
+            spawnEnemy();
+            updateUI();
+            nextQuestion();
         }
-      }, 30);
-    }
 
-    function handleAnswer(selectedIndex, isTimeout = false) {
-      if (isWaiting) return;
-      isWaiting = true;
-      clearInterval(timerInterval);
-      document.getElementById('timer-bar').style.width = '0%';
-      questionsAnsweredCount++;
-
-      const isCorrect = !isTimeout && currentChoices[selectedIndex].id === currentWord.id;
-      currentWord.lastSeenTime = Date.now();
-      if (!isEnToJa && !isTimeout) speakWord(currentChoices[selectedIndex].en);
-
-      const btns = document.querySelectorAll('.choice-btn');
-      btns.forEach((btn, idx) => {
-        btn.classList.remove('border-b-4', 'border-gray-900', 'bg-gray-700', 'hover:bg-gray-600');
-        if (currentChoices[idx].id === currentWord.id) {
-          btn.classList.add('border-4', 'border-green-500', 'bg-green-800');
-        } else if (idx === selectedIndex && !isCorrect) {
-          btn.classList.add('border-4', 'border-red-500', 'bg-red-800');
-        } else {
-          btn.classList.add('bg-gray-800', 'opacity-50');
+        function spawnEnemy() {
+            const types = [
+                { name: "スライム", icon: "👾", hp: 70 },
+                { name: "ゴブリン", icon: "👺", hp: 100 },
+                { name: "スケルトン", icon: "💀", hp: 130 }
+            ];
+            const wave = (player.defeatedCount % 10) + 1;
+            if (wave === 10) {
+                currentEnemy = { name: "忘却の魔王 (BOSS)", icon: "👑", hp: 250, maxHp: 250 };
+            } else {
+                const t = types[Math.floor(Math.random() * types.length)];
+                currentEnemy = { name: t.name, icon: t.icon, hp: t.hp, maxHp: t.hp };
+            }
         }
-      });
 
-      if (isCorrect) {
-        currentWord.correctCount++;
-        currentWord.lastResult = true;
-        sessionCorrect++;
-        
-        let baseDmg = calcDamage(currentWord);
-        let actualDmg = Math.floor(baseDmg * playerAtk);
-        enemyHp -= actualDmg;
-        
-        showPopup(`💥 ${actualDmg} DMG!`, '#f87171');
-        const img = document.getElementById('enemy-image');
-        img.style.transform = 'scale(0.8) rotate(-10deg)';
-        setTimeout(() => img.style.transform = 'scale(1) rotate(0deg)', 150);
+        // --- 5. 出題と選択肢生成 ---
+        function nextQuestion() {
+            isProcessing = false;
+            document.getElementById('cutin-overlay').classList.add('hidden');
 
-        saveData();
-        updateUI();
-        
-        setTimeout(() => proceedAfterQuestion(), 1000);
-      } else {
-        currentWord.incorrectCount++;
-        currentWord.lastResult = false;
-        sessionIncorrect++;
-        sessionMistakes.set(currentWord.id, currentWord);
-        
-        let baseEnemyDmg = (currentFloor > currentStage.maxFloor ? 30 : 20);
-        let actualEnemyDmg = Math.floor(baseEnemyDmg * (1 - playerDamageCut));
-        playerHp -= actualEnemyDmg;
-        
-        const msg = isTimeout ? '⌛ TIME OUT!' : '❌ MISS!';
-        showPopup(msg, '#60a5fa');
-        document.getElementById('battle-screen').classList.add('shake');
-        setTimeout(() => document.getElementById('battle-screen').classList.remove('shake'), 500);
+            // 未出題・高価値な単語を優先して選出
+            const sorted = [...words].sort((a, b) => calcWordBaseDamage(b) - calcWordBaseDamage(a));
+            currentWord = sorted[Math.floor(Math.random() * Math.min(3, sorted.length))];
 
-        saveData();
-        updateUI();
+            // UI更新 (問題と価値タグ)
+            document.getElementById('question-text').textContent = currentWord.en;
+            const baseDmg = calcWordBaseDamage(currentWord);
+            document.getElementById('word-damage-badge').textContent = `想定威力: ${baseDmg}`;
 
-        setTimeout(() => {
-          document.getElementById('next-btn-container').classList.remove('hidden');
-        }, 500);
-      }
-    }
+            // 4択生成
+            let choices = [currentWord.ja];
+            while (choices.length < 4) {
+                let dummy = words[Math.floor(Math.random() * words.length)].ja;
+                if (!choices.includes(dummy)) choices.push(dummy);
+            }
+            choices.sort(() => Math.random() - 0.5);
 
-    function nextBtnClicked() {
-      document.getElementById('next-btn-container').classList.add('hidden');
-      proceedAfterQuestion();
-    }
+            const container = document.getElementById('choices-container');
+            container.innerHTML = '';
+            choices.forEach(text => {
+                const btn = document.createElement('button');
+                btn.className = "w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-medium text-left transition border border-slate-600 text-sm flex justify-between items-center";
+                btn.innerHTML = `<span>${text}</span>`;
+                btn.onclick = () => handleAnswer(text, btn);
+                container.appendChild(btn);
+            });
 
-    function proceedAfterQuestion() {
-      if (playerHp <= 0) {
-        showResult('Game Over', false);
-        return;
-      } 
-      
-      if (enemyHp <= 0) {
-        if (currentFloor > currentStage.maxFloor) {
-           showResult('Dungeon Cleared!! 👑', true);
-           return;
-        } else {
-           currentFloor++;
-           spawnEnemy();
-           updateUI();
+            // 回答開始時間を記録（1秒以内クリティカル用）
+            questionStartTime = Date.now();
         }
-      }
 
-      if (questionsAnsweredCount > 0 && questionsAnsweredCount % 5 === 0) {
-        showSkillModal();
-      } else {
-        nextQuestion();
-      }
-    }
+        function updateConfidence(val) {
+            confidenceMultiplier = (parseFloat(val) / 10).toFixed(1);
+            document.getElementById('confidence-val').textContent = `${confidenceMultiplier}x`;
+        }
 
-    function showSkillModal() {
-      const choicesDiv = document.getElementById('skill-choices');
-      choicesDiv.innerHTML = '';
-      
-      const shuffled = [...allSkills].sort(() => 0.5 - Math.random());
-      const selectedSkills = shuffled.slice(0, 3);
+        // --- 6. シーケンス制御（タイムライン分離） ---
+        function handleAnswer(selectedText, btnElement) {
+            if (isProcessing) return;
+            isProcessing = true;
 
-      selectedSkills.forEach(skill => {
-        const btn = document.createElement('button');
-        btn.className = 'bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white font-bold py-3 px-4 rounded-lg shadow-[0_4px_0_rgb(55,65,81)] active:shadow-none active:translate-y-1 text-left transition-all relative z-50';
-        btn.innerHTML = `<div class="text-[15px] text-yellow-300 mb-1">${skill.name}</div><div class="text-[11px] text-gray-300 font-normal">${skill.desc}</div>`;
-        btn.onclick = () => {
-          skill.action();
-          updateUI();
-          document.getElementById('skill-modal').classList.add('hidden');
-          nextQuestion();
-        };
-        choicesDiv.appendChild(btn);
-      });
+            const responseTime = (Date.now() - questionStartTime) / 1000;
+            const isCritical = (responseTime <= 1.0);
+            const isCorrect = (selectedText === currentWord.ja);
 
-      document.getElementById('skill-modal').classList.remove('hidden');
-    }
+            // 全ボタン無効化
+            const container = document.getElementById('choices-container');
+            Array.from(container.children).forEach(b => b.disabled = true);
 
-    function showPopup(text, color) {
-      const popup = document.getElementById('damage-popup');
-      popup.innerText = text;
-      popup.style.color = color;
-      popup.style.opacity = '1';
-      popup.style.transform = 'translate(-50%, -20px)';
-      setTimeout(() => {
-        popup.style.opacity = '0';
-        popup.style.transform = 'translate(-50%, 0)';
-      }, 800);
-    }
+            // [シーケンス 1] 判定演出 (0.3秒)
+            if (isCorrect) {
+                btnElement.classList.replace('bg-slate-700', 'bg-emerald-600');
+                currentWord.correctCount++;
+                currentWord.lastResult = true;
+                currentWord.lastSeenTime = Date.now();
 
-    function surrender() {
-      if(confirm('ダンジョンから逃げ出しますか？')) {
-        clearInterval(timerInterval);
-        showResult('Retreated...', false);
-      }
-    }
+                // 計算
+                let finalDmg = Math.round(calcWordBaseDamage(currentWord) * confidenceMultiplier * (isCritical ? 1.5 : 1.0));
+                
+                setTimeout(() => {
+                    // [シーケンス 2] アクション演出 (0.5秒)
+                    showCutin(isCritical ? "CRITICAL!!" : "GREAT!", `💥 ${finalDmg} Damage`, "text-yellow-400");
+                    currentEnemy.hp = Math.max(0, currentEnemy.hp - finalDmg);
+                    updateUI();
 
-    function showResult(title, isClear) {
-      document.getElementById('result-title').innerText = title;
-      document.getElementById('result-title').className = isClear ? 'text-2xl font-bold mb-3 text-yellow-300 drop-shadow-md shrink-0' : 'text-2xl font-bold mb-3 text-gray-400 shrink-0';
-      
-      document.getElementById('result-correct').innerText = sessionCorrect;
-      document.getElementById('result-incorrect').innerText = sessionIncorrect;
-      
-      const baseCoin = (currentFloor - 1) * 10 + Math.floor(Math.random() * 20) + (isClear ? 100 : 0);
-      const finalCoin = baseCoin * currentStage.coinMulti;
-      
-      document.getElementById('result-coin').innerText = finalCoin;
-      totalCoins += finalCoin;
-      localStorage.setItem('wordDungeonCoins', totalCoins.toString());
+                    setTimeout(() => {
+                        // [シーケンス 3] 遷移判定
+                        if (currentEnemy.hp <= 0) {
+                            player.defeatedCount++;
+                            spawnEnemy();
+                            updateUI();
+                        }
+                        nextQuestion();
+                    }, 600);
+                }, 300);
 
-      const ul = document.getElementById('result-mistakes');
-      ul.innerHTML = '';
-      if (sessionMistakes.size === 0) {
-        ul.innerHTML = '<li class="text-green-400 font-bold text-center mt-4">ミスなし！完璧！</li>';
-      } else {
-        sessionMistakes.forEach(w => {
-          ul.innerHTML += `<li><span class="font-bold">${w.en}</span> - ${w.ja}</li>`;
-        });
-      }
+            } else {
+                btnElement.classList.replace('bg-slate-700', 'bg-rose-600');
+                currentWord.incorrectCount++;
+                currentWord.lastResult = false;
+                currentWord.lastSeenTime = Date.now();
 
-      document.getElementById('result-modal').classList.remove('hidden');
-    }
+                setTimeout(() => {
+                    // [シーケンス 2] ダメージ / バリア消費演出
+                    if (player.barrier > 0) {
+                        player.barrier--;
+                        showCutin("GUARD!", "🛡️ バリアが攻撃を防いだ", "text-cyan-400");
+                    } else {
+                        let penaltyDmg = Math.round(20 * confidenceMultiplier);
+                        player.hp = Math.max(0, player.hp - penaltyDmg);
+                        showCutin("MISS...", `💔 -${penaltyDmg} HP`, "text-rose-500");
+                        document.getElementById('game-container').classList.add('shake-effect');
+                        setTimeout(() => document.getElementById('game-container').classList.remove('shake-effect'), 400);
+                    }
+                    updateUI();
 
-    function closeResult() {
-      document.getElementById('result-modal').classList.add('hidden');
-      
-      const homeScreen = document.getElementById('home-screen');
-      const battleScreen = document.getElementById('battle-screen');
+                    setTimeout(() => {
+                        // [シーケンス 3] ゲームオーバー or 不正解解説モーダル表示
+                        if (player.hp <= 0) {
+                            showGameOver();
+                        } else {
+                            // 不正解時は自動進行せず、プレイヤーが確認するまで停止
+                            document.getElementById('exp-word').textContent = currentWord.en;
+                            document.getElementById('exp-meaning').textContent = currentWord.ja;
+                            document.getElementById('explanation-modal').classList.remove('hidden');
+                        }
+                    }, 700);
+                }, 300);
+            }
+        }
 
-      battleScreen.classList.remove('flex');
-      battleScreen.classList.add('hidden');
+        // カットイン表示
+        function showCutin(title, sub, colorClass) {
+            const overlay = document.getElementById('cutin-overlay');
+            const titleEl = document.getElementById('cutin-text');
+            const subEl = document.getElementById('damage-text');
+            
+            titleEl.textContent = title;
+            titleEl.className = `text-3xl font-black ${colorClass} drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]`;
+            subEl.textContent = sub;
+            
+            overlay.classList.remove('hidden');
+        }
 
-      homeScreen.classList.remove('hidden');
-      homeScreen.classList.add('flex');
-      
-      renderHome();
-    }
+        // 解説を見て次へ
+        function resumeAfterExplanation() {
+            document.getElementById('explanation-modal').classList.add('hidden');
+            nextQuestion();
+        }
 
-    function saveData() { localStorage.setItem('wordDungeonData', JSON.stringify(words)); }
-    function resetData() { 
-      if(confirm('学習データとコインをすべてリセットしますか？')) { 
-        localStorage.removeItem('wordDungeonData'); 
-        localStorage.removeItem('wordDungeonCoins');
-        totalCoins = 0;
-        init(); 
-      } 
-    }
+        // --- 7. UI更新 ---
+        function updateUI() {
+            document.getElementById('enemy-hp-current').textContent = currentEnemy.hp;
+            document.getElementById('enemy-hp-max').textContent = currentEnemy.maxHp;
+            document.getElementById('enemy-hp-bar').style.width = `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%`;
+            document.getElementById('enemy-name').textContent = currentEnemy.name;
+            document.getElementById('enemy-sprite').textContent = currentEnemy.icon;
 
-    init();
-  </script>
+            document.getElementById('player-hp-current').textContent = player.hp;
+            document.getElementById('player-hp-max').textContent = player.maxHp;
+            document.getElementById('player-hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+            document.getElementById('barrier-badge').textContent = `🛡️ ${player.barrier}`;
+
+            const wave = (player.defeatedCount % 10) + 1;
+            document.getElementById('floor-info').textContent = `STAGE 1 (WAVE ${wave}/10)`;
+            document.getElementById('enemy-count').textContent = `撃破数: ${player.defeatedCount}`;
+        }
+
+        function showGameOver() {
+            document.getElementById('question-panel').classList.add('hidden');
+            document.getElementById('battle-stage').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('battle-stage').classList.remove('hidden');
+            document.getElementById('question-panel').classList.remove('hidden');
+            initGame();
+        }
+
+        // 起動
+        initGame();
+    </script>
 </body>
 </html>
