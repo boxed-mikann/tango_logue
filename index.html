@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LEAP ROGUE-LITE — 単語×ローグライク RPG</title>
+  <meta name="description" content="高校生向け英単語帳LEAPの単語を反射的にマスターするローグライクRPG学習アプリ">
+  <!-- Tailwind CSS v4 Play CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Chart.js for Doughnut Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4">
+
+  <!-- メインコンテナ（スマホ最適化カードフレーム） -->
+  <div class="w-full max-w-md bg-slate-900/90 rounded-3xl shadow-2xl border border-slate-700/80 backdrop-blur-xl relative overflow-hidden min-h-[680px] h-[92vh] max-h-[820px] flex flex-col">
+
+    <!-- ========================================== -->
+    <!-- 🏠 1. ホーム画面 (3段構造)                   -->
+    <!-- ========================================== -->
+    <div id="home-screen" class="flex flex-col h-full justify-between p-4 overflow-y-auto">
+      
+      <!-- ヘッダー (タイトル、コイン、設定) -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
+        <div class="flex items-center gap-1.5">
+          <span class="text-base font-black tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+            LEAP ROGUE
+          </span>
+          <span class="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/40">
+            v2.0
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1 bg-amber-950/40 border border-amber-600/40 px-2 py-0.5 rounded-full">
+            <span class="text-xs">🪙</span>
+            <span id="home-coins" class="text-xs font-black text-amber-300 font-mono">0</span>
+          </div>
+          <button id="btn-open-settings" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 px-2.5 py-1 rounded-lg text-slate-300 transition-all">
+            ⚙️
+          </button>
+        </div>
+      </div>
+
+      <!-- 第1段（上段：メインダンジョンエリア ＆ 進捗円グラフ） -->
+      <div class="bg-slate-950/70 rounded-2xl p-3.5 border border-slate-800/90 text-center flex flex-col items-center shadow-lg relative my-1">
+        <!-- ダンジョン名切替 -->
+        <div class="flex items-center justify-between w-full mb-1">
+          <button id="btn-prev-dungeon" class="text-slate-400 hover:text-white px-2.5 py-1 text-sm font-black transition-colors">◀</button>
+          <div class="flex flex-col items-center">
+            <div id="home-dungeon-name" class="font-black text-sm text-yellow-300 tracking-wide">🌲 基礎の森</div>
+            <div id="home-dungeon-subtitle" class="text-[11px] text-slate-400 font-medium">LEAP Part 1</div>
+          </div>
+          <button id="btn-next-dungeon" class="text-slate-400 hover:text-white px-2.5 py-1 text-sm font-black transition-colors">▶</button>
+        </div>
+
+        <!-- 進捗円グラフ -->
+        <div id="home-chart-area" class="w-32 h-32 relative my-1 cursor-pointer group" title="タップで出現単語一覧">
+          <canvas id="homeChart"></canvas>
+          <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span class="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">マスター率</span>
+            <span id="home-progress-text" class="text-sm font-black text-emerald-400 font-mono">0%</span>
+          </div>
+        </div>
+
+        <!-- 状態内訳 & 一覧ボタン -->
+        <div class="flex items-center justify-between w-full px-2 mt-1">
+          <span id="home-progress-detail" class="text-[10px] text-slate-400 font-mono">
+            ✅0 📝0 ❓0
+          </span>
+          <button id="btn-open-wordlist" class="text-[10px] text-indigo-300 hover:text-indigo-200 underline">
+            出現単語一覧 ➔
+          </button>
+        </div>
+
+        <!-- ダンジョン出発ボタン -->
+        <button id="btn-start-battle" class="w-full mt-2.5 py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold rounded-xl shadow-lg shadow-indigo-600/30 transition-all transform active:scale-98 text-sm flex items-center justify-center gap-1.5">
+          <span>⚔️</span>
+          <span>ダンジョンへ出発</span>
+        </button>
+      </div>
+
+      <!-- 第2段（中段：スタイル選択エリア） -->
+      <div class="bg-slate-950/70 rounded-2xl p-2.5 border border-slate-800/90 flex items-center justify-between shadow-md my-1">
+        <button id="btn-prev-style" class="text-slate-400 hover:text-white px-2 py-1 text-sm font-black">◀</button>
+        <div id="home-style-area" class="text-center cursor-pointer flex-1 px-2 group">
+          <div class="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
+            <span>バトルスタイル</span>
+            <span class="text-[9px] text-slate-500">（タップで詳細）</span>
+          </div>
+          <div id="home-style-name" class="font-bold text-xs text-white group-hover:text-indigo-300 transition-colors">
+            🌱 ビギナー
+          </div>
+          <div id="home-style-desc" class="text-[10px] text-slate-400 truncate max-w-[260px] mx-auto mt-0.5">
+            初見単語のミス時被ダメ70%カット。初見正解のダメージ+50%。
+          </div>
+        </div>
+        <button id="btn-next-style" class="text-slate-400 hover:text-white px-2 py-1 text-sm font-black">▶</button>
+      </div>
+
+      <!-- 第3段（下段：各種コンテンツボタン） -->
+      <div class="grid grid-cols-2 gap-2 my-1">
+        <button id="btn-open-items" class="py-2.5 px-3 bg-slate-800/80 hover:bg-slate-700/90 rounded-xl text-xs font-bold border border-slate-700/80 hover:border-indigo-500/50 flex items-center justify-center gap-1.5 transition-all shadow-sm">
+          <span>🎒</span>
+          <span>アイテム・持ち込み</span>
+        </button>
+        <button id="btn-open-stylelist" class="py-2.5 px-3 bg-slate-800/80 hover:bg-slate-700/90 rounded-xl text-xs font-bold border border-slate-700/80 hover:border-indigo-500/50 flex items-center justify-center gap-1.5 transition-all shadow-sm">
+          <span>🛡️</span>
+          <span>スタイル一覧</span>
+        </button>
+        <button id="btn-open-totalwords" class="py-2.5 px-3 bg-slate-800/80 hover:bg-slate-700/90 rounded-xl text-xs font-bold border border-slate-700/80 hover:border-indigo-500/50 flex items-center justify-center gap-1.5 transition-all shadow-sm">
+          <span>📖</span>
+          <span>総単語リスト</span>
+        </button>
+        <button id="btn-open-quests" class="py-2.5 px-3 bg-slate-800/80 hover:bg-slate-700/90 rounded-xl text-xs font-bold border border-slate-700/80 hover:border-indigo-500/50 flex items-center justify-center gap-1.5 transition-all shadow-sm">
+          <span>📜</span>
+          <span>クエスト・実績</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ⚔️ 2. バトル画面                            -->
+    <!-- ========================================== -->
+    <div id="battle-screen" class="hidden flex flex-col h-full justify-between p-3.5 space-y-2 select-none overflow-hidden">
+      
+      <!-- バトルヘッダー (階層、アクティブアイテム、撤退) -->
+      <div class="flex justify-between items-center px-1">
+        <div class="flex items-center gap-1.5">
+          <span id="battle-floor-info" class="text-xs font-black text-indigo-300 font-mono tracking-tight">
+            STAGE 1 — WAVE 1/10
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <div id="active-items-container" class="flex gap-1">
+            <!-- 動的生成: 煙幕などのアクティブボタン -->
+          </div>
+          <button id="btn-retreat" class="text-[10px] bg-slate-800 hover:bg-rose-900/60 border border-slate-700 hover:border-rose-700 px-2 py-1 rounded-lg text-slate-300 font-bold transition-all">
+            🏠 撤退
+          </button>
+        </div>
+      </div>
+
+      <!-- 対面型ステージ (敵 vs プレイヤー) -->
+      <div class="bg-slate-950/80 rounded-2xl p-3 border border-slate-800/90 relative shadow-inner">
+        
+        <!-- カットイン演出オーバーレイ -->
+        <div id="cutin-overlay" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 hidden bg-slate-950/50 backdrop-blur-[2px] rounded-2xl">
+          <div id="cutin-text" class="cutin-title cutin-critical">CRITICAL!!</div>
+          <div id="damage-text" class="text-xl font-black text-white mt-1 drop-shadow-md"></div>
+        </div>
+
+        <!-- 敵エリア -->
+        <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
+          <div class="w-7/12 pr-2">
+            <div class="flex items-center gap-1.5">
+              <span id="enemy-name" class="font-extrabold text-sm text-rose-400 truncate">スライム</span>
+            </div>
+            <div id="enemy-trait-badge" class="text-[9px] text-amber-300/90 font-medium truncate mt-0.5 hidden"></div>
+            <!-- 敵HPバー -->
+            <div class="w-full bg-slate-800/90 h-2 rounded-full overflow-hidden border border-slate-700 mt-1">
+              <div id="enemy-hp-bar" class="bg-gradient-to-r from-rose-600 to-rose-400 h-full transition-all duration-300" style="width: 100%;"></div>
+            </div>
+            <div class="text-[10px] text-slate-400 text-right font-mono mt-0.5">
+              <span id="enemy-hp-current">50</span>/<span id="enemy-hp-max">50</span>
+            </div>
+          </div>
+          <div class="w-5/12 flex justify-center items-center">
+            <div id="enemy-sprite" class="text-4xl filter drop-shadow-lg transform transition-transform hover:scale-110">👾</div>
+          </div>
+        </div>
+
+        <!-- プレイヤーエリア -->
+        <div class="flex items-center justify-between">
+          <div class="w-5/12 flex justify-center items-center">
+            <div id="player-sprite" class="text-4xl filter drop-shadow-lg transform transition-transform hover:scale-110">⚔️</div>
+          </div>
+          <div class="w-7/12 pl-2">
+            <div class="flex justify-between items-center">
+              <span class="font-extrabold text-xs text-emerald-400">あなた</span>
+              <span id="battle-barrier-badge" class="text-[10px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/50 font-mono font-bold">
+                🛡️ 0
+              </span>
+            </div>
+            <!-- プレイヤーHPバー -->
+            <div class="w-full bg-slate-800/90 h-2 rounded-full overflow-hidden border border-slate-700 mt-1">
+              <div id="player-hp-bar" class="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full transition-all duration-300" style="width: 100%;"></div>
+            </div>
+            <div class="text-[10px] text-slate-400 text-right font-mono mt-0.5">
+              <span id="player-hp-current">100</span>/<span id="player-hp-max">100</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- タイムリミットバー -->
+      <div class="w-full bg-slate-800/90 h-1.5 rounded-full overflow-hidden border border-slate-700/60">
+        <div id="time-limit-bar" class="time-bar time-bar-normal" style="width: 100%;"></div>
+      </div>
+
+      <!-- 問題セクション ＆ 選択肢 ＆ 縦長スライダー -->
+      <div class="flex gap-2 items-stretch flex-1 min-h-0">
+        <!-- 左側：問題カード ＆ 4択選択肢 -->
+        <div class="flex-1 flex flex-col justify-between space-y-2">
+          
+          <!-- 問題表示カード -->
+          <div id="question-card" class="question-card card-low-value flex flex-col justify-center">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-[9px] uppercase tracking-wider text-indigo-300 font-extrabold">単語 / Meaning</span>
+              <div class="flex gap-1">
+                <button id="btn-speak" class="text-[10px] bg-slate-800/90 hover:bg-slate-700 px-2 py-0.5 rounded text-indigo-200 border border-slate-600/60 transition">
+                  🔊 音声
+                </button>
+                <button id="btn-speak-slow" class="text-[10px] bg-slate-800/90 hover:bg-slate-700 px-2 py-0.5 rounded text-indigo-200 border border-slate-600/60 transition">
+                  🐢 スロー
+                </button>
+              </div>
+            </div>
+            <div id="question-text" class="text-xl sm:text-2xl font-black text-white tracking-tight py-0.5">
+              abandon
+            </div>
+          </div>
+
+          <!-- 4択選択肢コンテナ -->
+          <div id="choices-container" class="grid grid-cols-1 gap-1.5 flex-1 justify-center">
+            <!-- main.js で動的生成 -->
+          </div>
+
+        </div>
+
+        <!-- 右側：スリムな縦長自信度スライダー -->
+        <div class="bg-slate-950/80 rounded-2xl p-2 border border-slate-800/90 flex flex-col items-center justify-between w-11 py-3 shadow-md">
+          <span id="confidence-val" class="text-[10px] text-yellow-400 font-black font-mono">1.0x</span>
+          <div class="flex-1 vertical-slider-container my-1">
+            <input type="range" id="confidence-slider" min="10" max="20" value="10" step="1" class="rainbow-range cursor-pointer">
+          </div>
+          <span class="text-[8px] text-slate-400 font-bold">自信度</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 🏆 3. リザルト画面                           -->
+    <!-- ========================================== -->
+    <div id="result-screen" class="hidden absolute inset-0 bg-slate-950/95 z-30 p-6 flex flex-col justify-center items-center text-center">
+      <div id="result-title" class="text-3xl font-black mb-2 text-rose-500">GAME OVER</div>
+      <p id="result-desc" class="text-slate-400 text-sm mb-3">ダンジョン攻略失敗……</p>
+      
+      <div id="result-coins" class="text-base font-bold text-amber-300 bg-amber-950/40 border border-amber-600/40 px-4 py-2 rounded-xl mb-2 font-mono">
+        🪙 +0 コイン
+      </div>
+
+      <div id="result-stats" class="text-xs text-slate-400 mb-6">
+        撃破: 0体
+      </div>
+
+      <button id="btn-result-home" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-extrabold rounded-xl shadow-lg transition-all text-sm">
+        ホームに戻る
+      </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 📋 4. モーダル群                             -->
+    <!-- ========================================== -->
+
+    <!-- 出現単語リストモーダル (ダンジョン別) -->
+    <div id="word-list-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+      <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+        <h3 class="font-extrabold text-sm text-yellow-300">📚 出現単語進捗リスト</h3>
+        <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">✕ 閉じる</button>
+      </div>
+      <div id="word-list-body" class="flex-1 overflow-y-auto space-y-1 text-xs pr-1"></div>
+    </div>
+
+    <!-- 単語詳細モーダル -->
+    <div id="word-detail-modal" class="hidden absolute inset-0 bg-slate-950/95 z-50 p-6 flex flex-col justify-center items-center text-center">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs shadow-2xl">
+        <div id="detail-word-en" class="text-2xl font-black text-white mb-1">abandon</div>
+        <div id="detail-word-ja" class="text-sm font-bold text-emerald-400 mb-3">見捨てる、放棄する</div>
+        
+        <div class="flex justify-center gap-2 mb-4">
+          <button id="detail-speak-btn" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1 rounded-lg text-indigo-200">
+            🔊 発音
+          </button>
+          <button id="detail-slow-btn" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1 rounded-lg text-indigo-200">
+            🐢 スロー
+          </button>
+        </div>
+
+        <div class="bg-slate-950/80 rounded-xl p-3 border border-slate-800 text-xs space-y-1.5 mb-4 text-left">
+          <div class="flex justify-between">
+            <span class="text-slate-400">マスタリー:</span>
+            <span id="detail-mastery">☆☆☆</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">正解回数:</span>
+            <span id="detail-correct" class="font-mono text-emerald-400">0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">ミス回数:</span>
+            <span id="detail-incorrect" class="font-mono text-rose-400">0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">最終遭遇:</span>
+            <span id="detail-last-seen" class="text-[10px] text-slate-300">未出題</span>
+          </div>
+        </div>
+
+        <button data-close-modal class="w-full py-2 bg-slate-800 hover:bg-slate-700 font-bold rounded-xl text-xs border border-slate-700 text-slate-200">
+          閉じる
+        </button>
+      </div>
+    </div>
+
+    <!-- 不正解時の解説モーダル -->
+    <div id="explanation-modal" class="hidden absolute inset-0 bg-slate-950/95 z-30 p-6 flex flex-col justify-center items-center text-center">
+      <div class="text-rose-400 text-xs font-black tracking-wider uppercase mb-1">❌ Review / 復習</div>
+      <div id="exp-word" class="text-2xl sm:text-3xl font-black text-white mb-1 tracking-tight">abandon</div>
+      
+      <div class="flex justify-center gap-2 my-2">
+        <button id="btn-exp-speak" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-indigo-200">
+          🔊 音声を聴く
+        </button>
+        <button id="btn-exp-slow" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-indigo-200">
+          🐢 スロー再生
+        </button>
+      </div>
+
+      <div id="exp-meaning" class="text-base sm:text-lg text-emerald-400 font-bold my-3 px-3 py-2 bg-emerald-950/30 border border-emerald-600/30 rounded-xl w-full">
+        見捨てる、放棄する
+      </div>
+
+      <!-- ここでアイテム使用可能（応急キット・封印の呪符） -->
+      <div id="exp-active-items" class="flex gap-2 my-3">
+        <!-- 動的配置 -->
+      </div>
+
+      <p class="text-[11px] text-slate-400 mb-6 leading-relaxed">
+        意味と発音をしっかりと頭に焼き付けて次へ進みましょう。
+      </p>
+
+      <button id="btn-exp-next" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-extrabold rounded-xl shadow-lg transition-all text-sm">
+        次へ進む
+      </button>
+    </div>
+
+    <!-- 設定モーダル -->
+    <div id="settings-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-5 flex flex-col justify-between">
+      <div>
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
+          <h3 class="font-extrabold text-sm text-white">⚙️ 設定 ＆ データ管理</h3>
+          <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">✕ 閉じる</button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+            <div class="font-bold text-slate-200 mb-1">音声読み上げ</div>
+            <div class="text-slate-400 text-[11px]">Web Speech API (en-US) を使用して単語を発音します。</div>
+          </div>
+
+          <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+            <div class="font-bold text-slate-200 mb-1">データ初期化</div>
+            <div class="text-slate-400 text-[11px] mb-2">学習記録、コイン、アンロック状況をすべて削除して初期状態に戻します。</div>
+            <button id="btn-reset-data" class="w-full py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-700 text-rose-200 font-bold rounded-lg text-xs transition">
+              ⚠️ 全データをリセットする
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center text-[10px] text-slate-500">
+        LEAP Rogue-Lite RPG v2.0
+      </div>
+    </div>
+
+    <!-- スタイル説明モーダル -->
+    <div id="style-detail-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-6 flex flex-col justify-center items-center text-center">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs shadow-2xl">
+        <div id="style-modal-name" class="text-lg font-black text-indigo-300 mb-2">🌱 ビギナー</div>
+        <p id="style-modal-desc" class="text-xs text-slate-300 mb-5 leading-relaxed">
+          初見単語のミス時被ダメ70%カット。初見正解のダメージ+50%。
+        </p>
+        <button data-close-modal class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl text-xs text-white">
+          閉じる
+        </button>
+      </div>
+    </div>
+
+    <!-- スタイル一覧モーダル -->
+    <div id="style-list-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+      <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+        <h3 class="font-extrabold text-sm text-indigo-300">🛡️ バトルスタイル一覧</h3>
+        <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">✕ 閉じる</button>
+      </div>
+      <div id="style-list-body" class="flex-1 overflow-y-auto space-y-2 text-xs pr-1"></div>
+    </div>
+
+    <!-- アイテムモーダル -->
+    <div id="item-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+      <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+        <div>
+          <h3 class="font-extrabold text-sm text-amber-300">🎒 アイテム ＆ 持ち込み設定</h3>
+          <div id="item-slots-info" class="text-[10px] text-slate-400">持ち込み枠: 0/2</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-gacha" class="text-xs bg-amber-600 hover:bg-amber-500 text-white font-bold px-2.5 py-1 rounded-lg transition shadow">
+            🎲 ガチャ (30🪙)
+          </button>
+          <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded-lg text-slate-300">✕</button>
+        </div>
+      </div>
+      <div id="item-list-body" class="flex-1 overflow-y-auto space-y-2 text-xs pr-1"></div>
+    </div>
+
+    <!-- ガチャ結果モーダル -->
+    <div id="gacha-result-modal" class="hidden absolute inset-0 bg-slate-950/95 z-50 p-6 flex flex-col justify-center items-center text-center">
+      <div class="bg-slate-900 border border-amber-500/60 rounded-2xl p-5 w-full max-w-xs shadow-2xl">
+        <div class="text-xs text-amber-400 font-bold mb-1">🎉 ITEM GET!!</div>
+        <div id="gacha-result-text" class="text-lg font-black text-white mb-2">📜 聖なる護符を入手！</div>
+        <div id="gacha-result-desc" class="text-xs text-slate-400 mb-5 leading-relaxed">アイテム説明</div>
+        <button data-close-modal class="w-full py-2 bg-amber-600 hover:bg-amber-500 font-bold rounded-xl text-xs text-white">
+          OK
+        </button>
+      </div>
+    </div>
+
+    <!-- 総単語リストモーダル -->
+    <div id="total-word-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+      <div class="flex justify-between items-center mb-1 pb-1 border-b border-slate-800">
+        <h3 class="font-extrabold text-sm text-cyan-300">📖 総単語リスト (LEAP)</h3>
+        <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">✕ 閉じる</button>
+      </div>
+      <div id="total-word-stats" class="text-[10px] text-slate-400 font-mono mb-2">全単語進捗</div>
+      <div id="total-word-list-body" class="flex-1 overflow-y-auto space-y-1 text-xs pr-1"></div>
+    </div>
+
+    <!-- クエストモーダル -->
+    <div id="quest-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+      <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+        <h3 class="font-extrabold text-sm text-purple-300">📜 クエスト ＆ 実績</h3>
+        <button data-close-modal class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">✕ 閉じる</button>
+      </div>
+      <div id="quest-list-body" class="flex-1 overflow-y-auto space-y-2 text-xs pr-1"></div>
+    </div>
+
+  </div>
+
+  <!-- Main Logic Script (ES Modules) -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>単語×ローグライク RPG (Phase 2)</title>
+    <title>単語×ローグライク RPG (Phase 3 Fixed)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for Doughnut Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* 画面シェイク */
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             20%, 60% { transform: translateX(-8px); }
@@ -15,195 +16,378 @@
         }
         .shake-effect { animation: shake 0.4s ease-in-out; }
 
-        /* ダメージポップアップアニメーション */
-        @keyframes floatUp {
-            0% { opacity: 0; transform: translateY(10px) scale(0.8); }
-            50% { opacity: 1; transform: translateY(-10px) scale(1.2); }
-            100% { opacity: 0; transform: translateY(-25px) scale(1); }
+        /* 縦置き自信度スライダー (スリム化 ＆ 縦長化) */
+        .vertical-slider-container {
+            writing-mode: vertical-lr;
+            direction: rtl;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .damage-popup { animation: floatUp 0.8s forwards; }
+        .rainbow-range {
+            background: linear-gradient(to top, #3b82f6, #eab308, #ef4444);
+            appearance: none;
+            width: 6px;
+            height: 100%;
+            border-radius: 3px;
+            outline: none;
+        }
+        .rainbow-range::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-3 select-none">
 
-    <!-- ゲームコンテナ -->
-    <div id="game-container" class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl p-4 border border-slate-700 relative overflow-hidden">
+    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 relative overflow-hidden min-h-[650px] flex flex-col">
         
-        <!-- ヘッダー情報 -->
-        <div class="flex justify-between items-center mb-3 text-xs text-slate-400 font-bold px-1">
-            <span id="floor-info" class="text-indigo-400">STAGE 1 (WAVE 1/10)</span>
-            <span id="enemy-count">撃破数: 0</span>
-        </div>
-
-        <!-- ================= 対面型バトルエリア (ポケモン風) ================= -->
-        <div id="battle-stage" class="bg-slate-950/80 rounded-xl p-3 border border-slate-700 relative mb-3">
-            
-            <!-- 演出用テキスト・ダメージポップアップ (オーバーレイ) -->
-            <div id="cutin-overlay" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 hidden">
-                <div id="cutin-text" class="text-3xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">CRITICAL!!</div>
-                <div id="damage-text" class="text-2xl font-bold text-white mt-1"></div>
+        <!-- ========================================== -->
+        <!-- 🏠 ホーム画面 (3段構成)                      -->
+        <!-- ========================================== -->
+        <div id="home-screen" class="p-4 flex flex-col h-full justify-between space-y-4">
+            <!-- 右上設定ボタン -->
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold text-indigo-400">LEAP ROGUE-LITE RPG</span>
+                <button onclick="openSettingsModal()" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded border border-slate-600">⚙️ 設定</button>
             </div>
 
-            <!-- 1. 上段：敵エリア -->
-            <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
-                <!-- 敵ステータス -->
-                <div class="w-1/2 pr-2">
-                    <div id="enemy-name" class="font-bold text-sm text-rose-400">スライム</div>
-                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700 mt-1">
-                        <div id="enemy-hp-bar" class="bg-rose-500 h-full transition-all duration-300" style="width: 100%;"></div>
+            <!-- 第1段：ダンジョン選択 ＆ 円グラフ -->
+            <div class="bg-slate-900/80 rounded-xl p-3 border border-slate-700 text-center flex flex-col items-center">
+                <div class="flex items-center justify-between w-full mb-2">
+                    <button onclick="prevDungeon()" class="text-slate-400 hover:text-white px-2 py-1 font-bold">◀</button>
+                    <span id="home-dungeon-name" class="font-bold text-sm text-yellow-300">基礎の森（LEAP Stage 1）</span>
+                    <button onclick="nextDungeon()" class="text-slate-400 hover:text-white px-2 py-1 font-bold">▶</button>
+                </div>
+                <!-- 円グラフ -->
+                <div class="w-36 h-36 relative my-1 cursor-pointer" onclick="openWordListModal()">
+                    <canvas id="homeChart"></canvas>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span class="text-[10px] text-slate-400">進捗率</span>
+                        <span id="home-progress-text" class="text-xs font-bold text-emerald-400">0%</span>
                     </div>
-                    <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="enemy-hp-current">80</span>/<span id="enemy-hp-max">80</span></div>
                 </div>
-                <!-- 敵画像 (ドット絵差し替え可能コンテナ) -->
-                <div class="w-1/2 flex justify-center items-center">
-                    <div id="enemy-sprite" class="text-5xl transform hover:scale-105 transition-transform">👾</div>
-                </div>
+                <div class="text-[10px] text-slate-400 mt-1">※グラフタップで出現単語一覧</div>
+                <button onclick="startBattle()" class="w-full mt-3 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-bold rounded-xl shadow-lg transition text-sm">
+                    🚀 ダンジョンへ出発
+                </button>
             </div>
 
-            <!-- 2. 下段：プレイヤーエリア -->
-            <div class="flex items-center justify-between pt-1">
-                <!-- プレイヤー画像 (ドット絵差し替え可能コンテナ) -->
-                <div class="w-1/2 flex justify-center items-center">
-                    <div id="player-sprite" class="text-5xl">⚔️</div>
+            <!-- 第2段：スタイル選択エリア (グラフ再描画なし) -->
+            <div class="bg-slate-900/80 rounded-xl p-2.5 border border-slate-700 flex items-center justify-between">
+                <button onclick="changeStyle(-1)" class="text-slate-400 hover:text-white px-2 font-bold">◀</button>
+                <div class="text-center cursor-pointer flex-1" onclick="openStyleModal()">
+                    <div class="text-[10px] text-indigo-300 font-semibold">バトルスタイル</div>
+                    <div id="home-style-name" class="font-bold text-xs text-white">⚔️ バランサー (標準型)</div>
                 </div>
-                <!-- プレイヤーステータス -->
-                <div class="w-1/2 pl-2">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-sm text-emerald-400">あなた</span>
-                        <!-- バリア表示 -->
-                        <span id="barrier-badge" class="text-[11px] bg-cyan-900 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500 font-mono">🛡️ 1</span>
-                    </div>
-                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700 mt-1">
-                        <div id="player-hp-bar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 100%;"></div>
-                    </div>
-                    <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="player-hp-current">100</span>/<span id="player-hp-max">100</span></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= コントロール ＆ 出題エリア ================= -->
-        <div id="question-panel" class="space-y-3">
-            
-            <!-- 自信度スライダー -->
-            <div class="bg-slate-900/90 rounded-lg p-2 border border-slate-700 flex items-center justify-between text-xs">
-                <span class="text-slate-400 font-bold flex items-center gap-1">
-                    🔥 自信度倍率: <span id="confidence-val" class="text-yellow-400 font-mono font-bold text-sm">1.0x</span>
-                </span>
-                <input type="range" id="confidence-slider" min="10" max="20" value="10" step="1" 
-                       class="w-28 accent-yellow-400 cursor-pointer" oninput="updateConfidence(this.value)">
+                <button onclick="changeStyle(1)" class="text-slate-400 hover:text-white px-2 font-bold">▶</button>
             </div>
 
-            <!-- 問題表示エリア (ダメージ期待値タグ表示) -->
-            <div class="bg-slate-700/50 rounded-xl p-3 text-center border border-slate-600 relative">
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-[10px] text-indigo-300 font-semibold uppercase">Question</span>
-                    <!-- 価値連動ダメージ表示タグ -->
-                    <span id="word-damage-badge" class="bg-rose-900/80 text-rose-300 text-[11px] font-bold px-2 py-0.5 rounded-full border border-rose-500/50">
-                        想定威力: 35
-                    </span>
-                </div>
-                <div id="question-text" class="text-2xl font-black text-white py-1">abandon</div>
-                <div class="text-[11px] text-slate-400">正しい日本語を選択してください</div>
-            </div>
-
-            <!-- 4択選択肢 -->
-            <div id="choices-container" class="grid grid-cols-1 gap-2">
-                <!-- 動的生成 -->
+            <!-- 第3段：各種コンテンツへの扉 -->
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="openItemModal()" class="py-2 px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold border border-slate-600 flex items-center justify-center gap-1">
+                    🎒 アイテム・持ち込み
+                </button>
+                <button onclick="openStyleListModal()" class="py-2 px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold border border-slate-600 flex items-center justify-center gap-1">
+                    🛡️ スタイル一覧
+                </button>
+                <button onclick="openTotalWordModal()" class="py-2 px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold border border-slate-600 flex items-center justify-center gap-1">
+                    📖 総単語リスト
+                </button>
+                <button onclick="openQuestModal()" class="py-2 px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold border border-slate-600 flex items-center justify-center gap-1">
+                    📜 クエスト・実績
+                </button>
             </div>
         </div>
 
-        <!-- 解説モーダル (不正解時に一時停止用) -->
+        <!-- ========================================== -->
+        <!-- ⚔️ バトル画面                                -->
+        <!-- ========================================== -->
+        <div id="battle-screen" class="hidden p-4 flex flex-col h-full justify-between space-y-3">
+            <!-- ヘッダー -->
+            <div class="flex justify-between items-center text-xs text-slate-400 font-bold px-1">
+                <span id="battle-floor-info" class="text-indigo-400">STAGE 1 (WAVE 1/10)</span>
+                <button onclick="returnToHome()" class="text-[10px] bg-slate-700 px-2 py-0.5 rounded">🏠 撤退</button>
+            </div>
+
+            <!-- 対面型ステージ (敵 vs プレイヤー) -->
+            <div class="bg-slate-950/80 rounded-xl p-3 border border-slate-700 relative">
+                <div id="cutin-overlay" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 hidden">
+                    <div id="cutin-text" class="text-3xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">CRITICAL!!</div>
+                    <div id="damage-text" class="text-2xl font-bold text-white mt-1"></div>
+                </div>
+
+                <!-- 敵エリア -->
+                <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                    <div class="w-1/2 pr-2">
+                        <div id="enemy-name" class="font-bold text-sm text-rose-400">スライム</div>
+                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700 mt-1">
+                            <div id="enemy-hp-bar" class="bg-rose-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="enemy-hp-current">70</span>/<span id="enemy-hp-max">70</span></div>
+                    </div>
+                    <div class="w-1/2 flex justify-center items-center">
+                        <div id="enemy-sprite" class="text-4xl">👾</div>
+                    </div>
+                </div>
+
+                <!-- プレイヤーエリア -->
+                <div class="flex items-center justify-between">
+                    <div class="w-1/2 flex justify-center items-center">
+                        <div id="player-sprite" class="text-4xl">⚔️</div>
+                    </div>
+                    <div class="w-1/2 pl-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-xs text-emerald-400">あなた</span>
+                            <span id="battle-barrier-badge" class="text-[10px] bg-cyan-900 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500 font-mono">🛡️ 1</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700 mt-1">
+                            <div id="player-hp-bar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-400 text-right mt-0.5"><span id="player-hp-current">100</span>/<span id="player-hp-max">100</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- タイムリミットバー -->
+            <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                <div id="time-limit-bar" class="bg-yellow-400 h-full transition-all duration-100" style="width: 100%;"></div>
+            </div>
+
+            <!-- 問題セクション ＆ 選択肢 ＆ 縦長スライダーのレイアウト統合 -->
+            <div class="flex gap-2 items-stretch">
+                <!-- 左側：問題カード ＆ 4択選択肢 -->
+                <div class="flex-1 flex flex-col space-y-2">
+                    <!-- 問題表示カード -->
+                    <div id="question-card" class="bg-slate-700/40 rounded-xl p-3 text-center border-2 border-slate-600 transition-colors duration-300">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-[10px] text-indigo-300 font-semibold uppercase">Meaning / Question</span>
+                            <div class="flex gap-1">
+                                <button onclick="speakWord(false)" class="text-[10px] bg-slate-600 hover:bg-slate-500 px-1.5 py-0.5 rounded text-indigo-200 transition">🔊 音声</button>
+                                <button onclick="speakWord(true)" class="text-[10px] bg-slate-600 hover:bg-slate-500 px-1.5 py-0.5 rounded text-indigo-200 transition">🐢 スロー</button>
+                            </div>
+                        </div>
+                        <div id="question-text" class="text-xl font-black text-white">abandon</div>
+                    </div>
+
+                    <!-- 4択選択肢 -->
+                    <div id="choices-container" class="grid grid-cols-1 gap-2">
+                        <!-- 動的生成 -->
+                    </div>
+                </div>
+
+                <!-- 右側：スリムな縦長自信度スライダー（選択肢の横にもかかる高さ） -->
+                <div class="bg-slate-900/90 rounded-xl p-2 border border-slate-700 flex flex-col items-center justify-between w-10 py-3">
+                    <span class="text-[9px] text-yellow-400 font-bold" id="confidence-val">1.0x</span>
+                    <div class="h-44 vertical-slider-container flex items-center justify-center my-1">
+                        <input type="range" id="confidence-slider" min="10" max="20" value="10" step="1" 
+                               class="rainbow-range cursor-pointer" oninput="updateConfidence(this.value)">
+                    </div>
+                    <span class="text-[8px] text-slate-400">自信</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 📋 各種モーダル群                            -->
+        <!-- ========================================== -->
+        <!-- 単語一覧モーダル -->
+        <div id="word-list-modal" class="hidden absolute inset-0 bg-slate-950/95 z-40 p-4 flex flex-col">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-sm text-yellow-300">📚 出現単語進捗リスト</h3>
+                <button onclick="closeModals()" class="text-xs bg-slate-700 px-2 py-1 rounded">✕ 閉じる</button>
+            </div>
+            <div id="word-list-body" class="flex-1 overflow-y-auto space-y-1.5 text-xs"></div>
+        </div>
+
+        <!-- 不正解時の解説モーダル -->
         <div id="explanation-modal" class="hidden absolute inset-0 bg-slate-950/90 z-30 p-6 flex flex-col justify-center items-center text-center">
-            <div class="text-rose-400 text-sm font-bold mb-1">❌ Incorrect / 解説</div>
+            <div class="text-rose-400 text-sm font-bold mb-1">❌ Incorrect / 復習</div>
             <div id="exp-word" class="text-2xl font-bold text-white mb-1">abandon</div>
+            <div class="flex justify-center gap-2 mb-2">
+                <button onclick="speakWord(false)" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-indigo-200">🔊 音声を聴く</button>
+                <button onclick="speakWord(true)" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-indigo-200">🐢 スロー再生</button>
+            </div>
             <div id="exp-meaning" class="text-lg text-emerald-400 font-semibold mb-4">見捨てる、放棄する</div>
-            <p class="text-xs text-slate-400 mb-6 leading-relaxed">この単語は復習が必要です。確実に覚えて次の攻撃力をアップさせましょう！</p>
-            <button onclick="resumeAfterExplanation()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl transition">次へ進む</button>
+            <p class="text-xs text-slate-400 mb-6 leading-relaxed">音声を確認し、確実に定着させましょう。</p>
+            <button onclick="resumeAfterExplanation()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl transition text-sm">次へ進む</button>
         </div>
 
-        <!-- ゲームオーバー画面 -->
-        <div id="result-screen" class="hidden text-center py-8">
-            <h2 class="text-3xl font-black mb-2 text-rose-500">GAME OVER</h2>
-            <p class="text-slate-400 text-sm mb-6">ダンジョン攻略失敗……</p>
-            <button onclick="restartGame()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">もう一度挑戦</button>
+        <!-- リザルト画面 -->
+        <div id="result-screen" class="hidden absolute inset-0 bg-slate-950 z-40 p-6 flex flex-col justify-center items-center text-center">
+            <h2 id="result-title" class="text-3xl font-black mb-2 text-rose-500">GAME OVER</h2>
+            <p id="result-desc" class="text-slate-400 text-sm mb-6">ダンジョン攻略失敗……</p>
+            <button onclick="returnToHome()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition text-sm">ホームに戻る</button>
         </div>
 
     </div>
 
     <script>
-        // --- 1. マスター＆単語データ ---
-        let words = [
+        // --- 1. マスターデータ ---
+        let wordsMaster = [
             { id: 1, en: "abandon", ja: "見捨てる、放棄する", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
             { id: 2, en: "ability", ja: "能力、才能", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
             { id: 3, en: "abolish", ja: "廃止する", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
             { id: 4, en: "absent", ja: "不在の、欠席した", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
-            { id: 5, en: "absolute", ja: "絶対的な、完全な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
-            { id: 6, en: "absorb", ja: "吸収する、夢中にさせる", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
-            { id: 7, en: "abstract", ja: "抽象的な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null },
-            { id: 8, en: "absurd", ja: "ばかげた、不条理な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null }
+            { id: 5, en: "absolute", ja: "絶対的な、完全な", correctCount: 0, incorrectCount: 0, lastResult: null, lastSeenTime: null }
+        ];
+
+        let dungeonsMaster = [
+            { id: "d1", name: "基礎の森（LEAP Stage 1）", wordIds: [1,2,3,4,5], enemies: [{name:"スライム", icon:"👾", hp:70}, {name:"ゴブリン", icon:"👺", hp:100}] },
+            { id: "d2", name: "炎の洞窟（LEAP Stage 2）", wordIds: [1,2,3,4,5], enemies: [{name:"ファイア蝙蝠", icon:"🦇", hp:90}, {name:"オーク", icon:"👹", hp:130}] }
+        ];
+
+        let stylesMaster = [
+            { id: "balanced", name: "⚔️ バランサー (標準型)", desc: "攻守のバランスが良い基本スタイル" },
+            { id: "berserker", name: "🔥 バーサーカー (攻撃型)", desc: "ダメージが1.2倍になるが被弾も増加" }
         ];
 
         // --- 2. 状態管理 ---
+        let currentDungeonIdx = 0;
+        let currentStyleIdx = 0;
         let player = { hp: 100, maxHp: 100, barrier: 1, defeatedCount: 0 };
-        let currentEnemy = { name: "スライム", icon: "👾", hp: 80, maxHp: 80 };
+        let currentEnemy = { name: "スライム", icon: "👾", hp: 70, maxHp: 70 };
         let currentWord = null;
         let confidenceMultiplier = 1.0;
         let questionStartTime = 0;
-        let isProcessing = false; // 二重タップ防止
+        let timerInterval = null;
+        let timeRemaining = 5.0;
+        let isProcessing = false;
+        let homeChartInstance = null;
 
-        // --- 3. ダメージ計算ロジック（価値連動） ---
-        function calcWordBaseDamage(word) {
-            let dmg = 15;
-            if (word.lastSeenTime === null) dmg += 25;       // 初見 (+25)
-            else if (word.lastResult === false) dmg += 20;   // 直近ミス (+20)
-            else dmg += 5;                                  // 復習 (+5)
-            dmg += Math.min(word.incorrectCount * 2, 10);
-            return dmg;
+        window.onload = function() {
+            renderHome();
+        };
+
+        // --- 3. ホーム画面描画 ＆ スタイル変更最適化 ---
+        function renderHome() {
+            const dungeon = dungeonsMaster[currentDungeonIdx];
+            document.getElementById('home-dungeon-name').textContent = dungeon.name;
+            updateStyleDisplay();
+
+            let memorized = 0, learning = 0, unseen = 0;
+            dungeon.wordIds.forEach(id => {
+                const w = wordsMaster.find(item => item.id === id);
+                if (!w || w.lastSeenTime === null) unseen++;
+                else if (w.lastResult && w.correctCount >= 2) memorized++;
+                else learning++;
+            });
+
+            const total = dungeon.wordIds.length;
+            const progress = Math.round((memorized / total) * 100);
+            document.getElementById('home-progress-text').textContent = `${progress}%`;
+
+            const ctx = document.getElementById('homeChart').getContext('2d');
+            if (homeChartInstance) homeChartInstance.destroy();
+            homeChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [memorized, learning, unseen],
+                        backgroundColor: ['#22c55e', '#eab308', '#64748b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    cutout: '75%',
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
         }
 
-        // --- 4. ゲーム初期化 ---
-        function initGame() {
-            player.hp = 100;
+        function updateStyleDisplay() {
+            document.getElementById('home-style-name').textContent = stylesMaster[currentStyleIdx].name;
+        }
+
+        function prevDungeon() {
+            currentDungeonIdx = (currentDungeonIdx - 1 + dungeonsMaster.length) % dungeonsMaster.length;
+            renderHome();
+        }
+        function nextDungeon() {
+            currentDungeonIdx = (currentDungeonIdx + 1) % dungeonsMaster.length;
+            renderHome();
+        }
+        function changeStyle(direction) {
+            currentStyleIdx = (currentStyleIdx + direction + stylesMaster.length) % stylesMaster.length;
+            updateStyleDisplay(); // グラフを再描画せずにスタイル名テキストだけを更新
+        }
+
+        // --- 4. 音声読み上げ機能 (Web Speech API) ---
+        function speakWord(slow = false) {
+            if (!currentWord) return;
+            window.speechSynthesis.cancel(); // 連続タップ時の重複防止
+            const utterance = new SpeechSynthesisUtterance(currentWord.en);
+            utterance.lang = 'en-US';
+            utterance.rate = slow ? 0.5 : 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- 5. バトル開始 ---
+        function startBattle() {
+            player.hp = player.maxHp;
             player.barrier = 1;
             player.defeatedCount = 0;
             spawnEnemy();
-            updateUI();
+
+            document.getElementById('home-screen').classList.add('hidden');
+            document.getElementById('battle-screen').classList.remove('hidden');
             nextQuestion();
         }
 
-        function spawnEnemy() {
-            const types = [
-                { name: "スライム", icon: "👾", hp: 70 },
-                { name: "ゴブリン", icon: "👺", hp: 100 },
-                { name: "スケルトン", icon: "💀", hp: 130 }
-            ];
-            const wave = (player.defeatedCount % 10) + 1;
-            if (wave === 10) {
-                currentEnemy = { name: "忘却の魔王 (BOSS)", icon: "👑", hp: 250, maxHp: 250 };
-            } else {
-                const t = types[Math.floor(Math.random() * types.length)];
-                currentEnemy = { name: t.name, icon: t.icon, hp: t.hp, maxHp: t.hp };
-            }
+        function returnToHome() {
+            clearInterval(timerInterval);
+            document.getElementById('battle-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('home-screen').classList.remove('hidden');
+            renderHome();
         }
 
-        // --- 5. 出題と選択肢生成 ---
+        function spawnEnemy() {
+            const dungeon = dungeonsMaster[currentDungeonIdx];
+            const enemyInfo = dungeon.enemies[player.defeatedCount % dungeon.enemies.length];
+            const hpBonus = player.defeatedCount * 10;
+            currentEnemy = { name: enemyInfo.name, icon: enemyInfo.icon, hp: enemyInfo.hp + hpBonus, maxHp: enemyInfo.hp + hpBonus };
+            updateBattleUI();
+        }
+
+        // --- 6. 問題出題 ＆ タイムリミット ＆ 枠線カラー ---
+        function calcWordBaseDamage(word) {
+            let dmg = 15;
+            if (word.lastSeenTime === null) dmg += 25;
+            else if (word.lastResult === false) dmg += 20;
+            return dmg;
+        }
+
         function nextQuestion() {
             isProcessing = false;
+            clearInterval(timerInterval);
             document.getElementById('cutin-overlay').classList.add('hidden');
 
-            // 未出題・高価値な単語を優先して選出
-            const sorted = [...words].sort((a, b) => calcWordBaseDamage(b) - calcWordBaseDamage(a));
-            currentWord = sorted[Math.floor(Math.random() * Math.min(3, sorted.length))];
+            const dungeon = dungeonsMaster[currentDungeonIdx];
+            const candidates = wordsMaster.filter(w => dungeon.wordIds.includes(w.id));
+            currentWord = candidates[Math.floor(Math.random() * candidates.length)];
 
-            // UI更新 (問題と価値タグ)
             document.getElementById('question-text').textContent = currentWord.en;
+
+            // 問題枠線のカラー変更
             const baseDmg = calcWordBaseDamage(currentWord);
-            document.getElementById('word-damage-badge').textContent = `想定威力: ${baseDmg}`;
+            const card = document.getElementById('question-card');
+            card.className = "bg-slate-700/40 rounded-xl p-3 text-center border-2 transition-colors duration-300 ";
+            if (baseDmg >= 35) card.classList.add('border-rose-500', 'bg-rose-950/30');
+            else if (baseDmg >= 25) card.classList.add('border-yellow-500', 'bg-yellow-950/30');
+            else card.classList.add('border-emerald-500', 'bg-emerald-950/30');
 
             // 4択生成
             let choices = [currentWord.ja];
             while (choices.length < 4) {
-                let dummy = words[Math.floor(Math.random() * words.length)].ja;
+                let dummy = wordsMaster[Math.floor(Math.random() * wordsMaster.length)].ja;
                 if (!choices.includes(dummy)) choices.push(dummy);
             }
             choices.sort(() => Math.random() - 0.5);
@@ -212,14 +396,27 @@
             container.innerHTML = '';
             choices.forEach(text => {
                 const btn = document.createElement('button');
-                btn.className = "w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-medium text-left transition border border-slate-600 text-sm flex justify-between items-center";
-                btn.innerHTML = `<span>${text}</span>`;
+                btn.className = "w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-medium text-left transition border border-slate-600 text-sm";
+                btn.textContent = text;
                 btn.onclick = () => handleAnswer(text, btn);
                 container.appendChild(btn);
             });
 
-            // 回答開始時間を記録（1秒以内クリティカル用）
+            // タイムリミットバー (5秒)
             questionStartTime = Date.now();
+            timeRemaining = 5.0;
+            const timeBar = document.getElementById('time-limit-bar');
+            
+            timerInterval = setInterval(() => {
+                const elapsed = (Date.now() - questionStartTime) / 1000;
+                timeRemaining = Math.max(0, 5.0 - elapsed);
+                timeBar.style.width = `${(timeRemaining / 5.0) * 100}%`;
+
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimeOut();
+                }
+            }, 50);
         }
 
         function updateConfidence(val) {
@@ -227,102 +424,99 @@
             document.getElementById('confidence-val').textContent = `${confidenceMultiplier}x`;
         }
 
-        // --- 6. シーケンス制御（タイムライン分離） ---
+        // --- 7. 回答・判定 ---
         function handleAnswer(selectedText, btnElement) {
             if (isProcessing) return;
             isProcessing = true;
+            clearInterval(timerInterval);
 
             const responseTime = (Date.now() - questionStartTime) / 1000;
             const isCritical = (responseTime <= 1.0);
             const isCorrect = (selectedText === currentWord.ja);
 
-            // 全ボタン無効化
             const container = document.getElementById('choices-container');
             Array.from(container.children).forEach(b => b.disabled = true);
 
-            // [シーケンス 1] 判定演出 (0.3秒)
             if (isCorrect) {
                 btnElement.classList.replace('bg-slate-700', 'bg-emerald-600');
                 currentWord.correctCount++;
                 currentWord.lastResult = true;
                 currentWord.lastSeenTime = Date.now();
 
-                // 計算
-                let finalDmg = Math.round(calcWordBaseDamage(currentWord) * confidenceMultiplier * (isCritical ? 1.5 : 1.0));
-                
+                let dmg = Math.round(calcWordBaseDamage(currentWord) * confidenceMultiplier * (isCritical ? 1.5 : 1.0));
+                if (currentStyleIdx === 1) dmg = Math.round(dmg * 1.2);
+
                 setTimeout(() => {
-                    // [シーケンス 2] アクション演出 (0.5秒)
-                    showCutin(isCritical ? "CRITICAL!!" : "GREAT!", `💥 ${finalDmg} Damage`, "text-yellow-400");
-                    currentEnemy.hp = Math.max(0, currentEnemy.hp - finalDmg);
-                    updateUI();
+                    showCutin(isCritical ? "⚡ CRITICAL!!" : "GREAT!", `💥 ${dmg} Damage`, "text-yellow-400");
+                    currentEnemy.hp = Math.max(0, currentEnemy.hp - dmg);
+                    updateBattleUI();
 
                     setTimeout(() => {
-                        // [シーケンス 3] 遷移判定
                         if (currentEnemy.hp <= 0) {
                             player.defeatedCount++;
                             spawnEnemy();
-                            updateUI();
                         }
                         nextQuestion();
                     }, 600);
                 }, 300);
-
             } else {
-                btnElement.classList.replace('bg-slate-700', 'bg-rose-600');
-                currentWord.incorrectCount++;
-                currentWord.lastResult = false;
-                currentWord.lastSeenTime = Date.now();
-
-                setTimeout(() => {
-                    // [シーケンス 2] ダメージ / バリア消費演出
-                    if (player.barrier > 0) {
-                        player.barrier--;
-                        showCutin("GUARD!", "🛡️ バリアが攻撃を防いだ", "text-cyan-400");
-                    } else {
-                        let penaltyDmg = Math.round(20 * confidenceMultiplier);
-                        player.hp = Math.max(0, player.hp - penaltyDmg);
-                        showCutin("MISS...", `💔 -${penaltyDmg} HP`, "text-rose-500");
-                        document.getElementById('game-container').classList.add('shake-effect');
-                        setTimeout(() => document.getElementById('game-container').classList.remove('shake-effect'), 400);
-                    }
-                    updateUI();
-
-                    setTimeout(() => {
-                        // [シーケンス 3] ゲームオーバー or 不正解解説モーダル表示
-                        if (player.hp <= 0) {
-                            showGameOver();
-                        } else {
-                            // 不正解時は自動進行せず、プレイヤーが確認するまで停止
-                            document.getElementById('exp-word').textContent = currentWord.en;
-                            document.getElementById('exp-meaning').textContent = currentWord.ja;
-                            document.getElementById('explanation-modal').classList.remove('hidden');
-                        }
-                    }, 700);
-                }, 300);
+                processMistake(btnElement);
             }
         }
 
-        // カットイン表示
+        function handleTimeOut() {
+            if (isProcessing) return;
+            isProcessing = true;
+            processMistake(null);
+        }
+
+        function processMistake(btnElement) {
+            if (btnElement) btnElement.classList.replace('bg-slate-700', 'bg-rose-600');
+            currentWord.incorrectCount++;
+            currentWord.lastResult = false;
+            currentWord.lastSeenTime = Date.now();
+
+            setTimeout(() => {
+                if (player.barrier > 0) {
+                    player.barrier--;
+                    showCutin("🛡️ GUARD!", "バリアがダメージを防いだ", "text-cyan-400");
+                } else {
+                    let penalty = Math.round(20 * confidenceMultiplier);
+                    player.hp = Math.max(0, player.hp - penalty);
+                    showCutin("MISS...", `💔 -${penalty} HP`, "text-rose-500");
+                    document.getElementById('battle-screen').classList.add('shake-effect');
+                    setTimeout(() => document.getElementById('battle-screen').classList.remove('shake-effect'), 400);
+                }
+                updateBattleUI();
+
+                setTimeout(() => {
+                    if (player.hp <= 0) {
+                        showGameOver();
+                    } else {
+                        document.getElementById('exp-word').textContent = currentWord.en;
+                        document.getElementById('exp-meaning').textContent = currentWord.ja;
+                        document.getElementById('explanation-modal').classList.remove('hidden');
+                    }
+                }, 700);
+            }, 300);
+        }
+
         function showCutin(title, sub, colorClass) {
             const overlay = document.getElementById('cutin-overlay');
             const titleEl = document.getElementById('cutin-text');
             const subEl = document.getElementById('damage-text');
-            
             titleEl.textContent = title;
             titleEl.className = `text-3xl font-black ${colorClass} drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]`;
             subEl.textContent = sub;
-            
             overlay.classList.remove('hidden');
         }
 
-        // 解説を見て次へ
         function resumeAfterExplanation() {
             document.getElementById('explanation-modal').classList.add('hidden');
             nextQuestion();
         }
 
-        // --- 7. UI更新 ---
-        function updateUI() {
+        function updateBattleUI() {
             document.getElementById('enemy-hp-current').textContent = currentEnemy.hp;
             document.getElementById('enemy-hp-max').textContent = currentEnemy.maxHp;
             document.getElementById('enemy-hp-bar').style.width = `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%`;
@@ -332,28 +526,49 @@
             document.getElementById('player-hp-current').textContent = player.hp;
             document.getElementById('player-hp-max').textContent = player.maxHp;
             document.getElementById('player-hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
-            document.getElementById('barrier-badge').textContent = `🛡️ ${player.barrier}`;
-
-            const wave = (player.defeatedCount % 10) + 1;
-            document.getElementById('floor-info').textContent = `STAGE 1 (WAVE ${wave}/10)`;
-            document.getElementById('enemy-count').textContent = `撃破数: ${player.defeatedCount}`;
+            document.getElementById('battle-barrier-badge').textContent = `🛡️ ${player.barrier}`;
+            document.getElementById('battle-floor-info').textContent = `STAGE ${currentDungeonIdx + 1} (撃破: ${player.defeatedCount})`;
         }
 
         function showGameOver() {
-            document.getElementById('question-panel').classList.add('hidden');
-            document.getElementById('battle-stage').classList.add('hidden');
             document.getElementById('result-screen').classList.remove('hidden');
         }
 
-        function restartGame() {
-            document.getElementById('result-screen').classList.add('hidden');
-            document.getElementById('battle-stage').classList.remove('hidden');
-            document.getElementById('question-panel').classList.remove('hidden');
-            initGame();
+        // --- 8. モーダル表示機能 ---
+        function openWordListModal() {
+            const dungeon = dungeonsMaster[currentDungeonIdx];
+            const body = document.getElementById('word-list-body');
+            body.innerHTML = '';
+
+            dungeon.wordIds.forEach(id => {
+                const w = wordsMaster.find(item => item.id === id);
+                const isSeen = w && w.lastSeenTime !== null;
+                const div = document.createElement('div');
+                div.className = "flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-700";
+                div.innerHTML = `
+                    <div>
+                        <span class="font-bold text-white">${isSeen ? w.en : '？？？'}</span>
+                        <span class="text-slate-400 text-[10px] ml-2">${isSeen ? w.ja : ''}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400">
+                        正解: ${w ? w.correctCount : 0} / 遭遇: ${(w ? w.correctCount + w.incorrectCount : 0)}
+                    </div>
+                `;
+                body.appendChild(div);
+            });
+            document.getElementById('word-list-modal').classList.remove('hidden');
         }
 
-        // 起動
-        initGame();
+        function closeModals() {
+            document.getElementById('word-list-modal').classList.add('hidden');
+        }
+
+        function openSettingsModal() { alert('設定画面 (音声・データリセット等)'); }
+        function openStyleModal() { alert(stylesMaster[currentStyleIdx].name + "\n\n" + stylesMaster[currentStyleIdx].desc); }
+        function openItemModal() { alert('アイテム・初期持ち込み設定画面'); }
+        function openStyleListModal() { alert('スタイル一覧・アンロック状況'); }
+        function openTotalWordModal() { alert('すべての単語の総合成績一覧'); }
+        function openQuestModal() { alert('クエスト・メタプログレッション実績'); }
     </script>
 </body>
 </html>
