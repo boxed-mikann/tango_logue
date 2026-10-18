@@ -1,5 +1,5 @@
 // ============================================================
-// storage.js — LocalStorage 管理（学習進捗の保存・読み込み）
+// storage.js — LocalStorage 管理（学習進捗、能力値、設定保存）
 // ============================================================
 
 const STORAGE_KEY = 'leapRogueLite_v2';
@@ -8,12 +8,26 @@ const STORAGE_KEY = 'leapRogueLite_v2';
 function createDefaultSave() {
   return {
     permanent: {
-      coins: 0,
-      unlockedStyles: ['beginner'],
-      unlockedItems: ['scroll_shield', 'smoke_bomb'],
-      maxItemSlots: 2,
-      equippedItems: ['scroll_shield', 'smoke_bomb'],
+      coins: 50, // 初期コイン少しプレゼント
+      unlockedStyles: ['beginner', 'balanced'], // 初期2種
+      unlockedItems: ['scroll_shield', 'smoke_bomb'], // 初期2種解放済み
+      equippedItems: ['scroll_shield'], // 持ち込み装備中アイテム
       selectedStyle: 'beginner',
+      // 能力値手動振り分け (マスター単語数がSPになる)
+      avatarStats: {
+        atk: 0,
+        def: 0,
+        hp: 0,
+        time: 0,
+      },
+      // クエスト進行
+      claimedQuests: [], // 報酬受け取り済みクエストID
+      // 設定
+      settings: {
+        bgmEnabled: true,
+        seEnabled: true,
+        autoSpeak: true, // 出題時に自動で単語を発音するか
+      },
       // 累計統計
       stats: {
         totalDefeated: 0,
@@ -22,14 +36,13 @@ function createDefaultSave() {
         totalCorrect: 0,
         totalIncorrect: 0,
         highConfidenceCorrect: 0,
-        clozeCorrect: 0,
         dungeonClears: {},     // { d1: 2, d2: 1 ... }
         perfectClears: 0,
-        completedQuests: [],
+        lastConfidence: 10,    // 自信度バー維持用 (10 = 1.0x)
       },
     },
     wordProgress: {},
-    // wordId => { correctCount, incorrectCount, lastResult, lastSeenTime, masteryLevel, isCloze }
+    // wordId => { correctCount, incorrectCount, lastResult, lastSeenTime, masteryLevel }
   };
 }
 
@@ -39,18 +52,31 @@ export function loadSaveData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
-      // マイグレーション: 不足フィールドをデフォルトで補完
       const defaults = createDefaultSave();
+
       if (!data.permanent) data.permanent = defaults.permanent;
       if (!data.permanent.stats) data.permanent.stats = defaults.permanent.stats;
+      if (!data.permanent.avatarStats) data.permanent.avatarStats = defaults.permanent.avatarStats;
+      if (!data.permanent.settings) data.permanent.settings = defaults.permanent.settings;
+      if (!data.permanent.claimedQuests) data.permanent.claimedQuests = defaults.permanent.claimedQuests;
+      if (!data.permanent.unlockedStyles) data.permanent.unlockedStyles = defaults.permanent.unlockedStyles;
+      if (!data.permanent.unlockedItems) data.permanent.unlockedItems = defaults.permanent.unlockedItems;
       if (!data.permanent.equippedItems) data.permanent.equippedItems = defaults.permanent.equippedItems;
       if (!data.wordProgress) data.wordProgress = {};
-      // stats内の不足フィールドも補完
-      for (const key of Object.keys(defaults.permanent.stats)) {
-        if (data.permanent.stats[key] === undefined) {
-          data.permanent.stats[key] = defaults.permanent.stats[key];
+
+      // 足りないstatsキーを補完
+      for (const k of Object.keys(defaults.permanent.stats)) {
+        if (data.permanent.stats[k] === undefined) {
+          data.permanent.stats[k] = defaults.permanent.stats[k];
         }
       }
+      // 初期スタイル2つが必ず含まれるように保証
+      defaults.permanent.unlockedStyles.forEach(s => {
+        if (!data.permanent.unlockedStyles.includes(s)) {
+          data.permanent.unlockedStyles.push(s);
+        }
+      });
+
       return data;
     }
   } catch (e) {
@@ -83,7 +109,6 @@ export function getWordProgress(saveData, wordId) {
       lastResult: null,
       lastSeenTime: null,
       masteryLevel: 0,
-      isCloze: false,
     };
   }
   return saveData.wordProgress[wordId];
@@ -99,14 +124,32 @@ export function updateWordProgress(saveData, wordId, isCorrect) {
     wp.lastResult = false;
   }
   wp.lastSeenTime = Date.now();
-  // マスタリーレベル更新
+
+  // マスタリーレベル判定 (正解3回以上でマスター)
   if (wp.correctCount >= 5) wp.masteryLevel = 3;
   else if (wp.correctCount >= 3) wp.masteryLevel = 2;
   else if (wp.correctCount >= 1) wp.masteryLevel = 1;
   else wp.masteryLevel = 0;
 }
 
-// ─── 統計更新ヘルパー ───
+// ─── マスター単語数・遭遇単語数の計算 ───
+export function getMasteredWordsCount(saveData) {
+  let count = 0;
+  for (const wp of Object.values(saveData.wordProgress)) {
+    if (wp.masteryLevel >= 2) count++;
+  }
+  return count;
+}
+
+export function getSeenWordsCount(saveData) {
+  let count = 0;
+  for (const wp of Object.values(saveData.wordProgress)) {
+    if (wp.lastSeenTime !== null) count++;
+  }
+  return count;
+}
+
+// ─── 統計更新 ───
 export function incrementStat(saveData, statName, amount = 1) {
   if (typeof saveData.permanent.stats[statName] === 'number') {
     saveData.permanent.stats[statName] += amount;
